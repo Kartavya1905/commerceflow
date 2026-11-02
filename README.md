@@ -2,14 +2,14 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 4 of 12.** Identity, catalog, gateway, inventory and order services run locally: rotating refresh tokens, cached product search, stock reservations that cannot oversell (tested with 100 buyers racing for one unit), and idempotent order submission priced only by the catalog. Orders stay `PENDING` until Kafka and the saga connect the services in Milestones 5 and 6. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 5 of 12.** Identity, catalog, gateway, inventory and order services run locally and talk through Kafka with a transactional outbox: placing an order reserves stock asynchronously and moves the order to PAYMENT_PROCESSING, or fails it as OUT_OF_STOCK, with duplicates, retries, dead-letter topics and Kafka outages handled. Payment and the saga arrive in Milestone 6. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
 - **Saga orchestration** with compensating transactions across order, inventory and payment services
 - **Transactional outbox** so a database commit and its Kafka event cannot diverge
 - **Idempotency at every hop**: API idempotency keys, consumer dedupe, business-key uniqueness, provider idempotency keys
-- **No overselling** under concurrent checkout, enforced by a single conditional update and database constraints
+- **No overselling** under concurrent checkout: row locks taken in a fixed order, guarded updates, and database constraints that reject any write creating or losing stock
 - **Payment reconciliation** for timeouts and lost acknowledgements, against a self-hosted payment sandbox
 - **Observability**: traces across services and Kafka, consumer lag, outbox age, stuck-saga alerts
 

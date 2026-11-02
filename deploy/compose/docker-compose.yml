@@ -239,6 +239,7 @@ services:
       PORT: 8083
       ORDER_DB_URL: jdbc:postgresql://postgres:5432/order_db
       ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?set in .env}
+      KAFKA_BOOTSTRAP: kafka:29092
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
       CATALOG_URI: http://catalog-service:8082
@@ -248,6 +249,8 @@ services:
       - "127.0.0.1:8083:8083"
     depends_on:
       postgres-init:
+        condition: service_completed_successfully
+      kafka-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -266,12 +269,15 @@ services:
       PORT: 8084
       INVENTORY_DB_URL: jdbc:postgresql://postgres:5432/inventory_db
       INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:?set in .env}
+      KAFKA_BOOTSTRAP: kafka:29092
       JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     ports:
       - "127.0.0.1:8084:8084"
     depends_on:
       postgres-init:
+        condition: service_completed_successfully
+      kafka-init:
         condition: service_completed_successfully
     healthcheck: *service-health
     mem_limit: 768m

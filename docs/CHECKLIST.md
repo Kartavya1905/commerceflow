@@ -71,8 +71,8 @@ Found and fixed during this milestone:
 - [x] Tests: inventory 37 (last-unit race 100 buyers x 20 runs, 200 opposite-order runs, duplicate deliveries, every lifecycle transition), order 20 (idempotency races, ownership, catalog failure, slow catalog, circuit open and recovery)
 - [x] `check-infra`: 126 checks, including restock → cart → order → replay → ownership through the gateway
 - [x] Mutation checks: 5 of 6 regressions caught (see below)
-- [ ] CI green on GitHub
-- [ ] Tag `m4-done`
+- [x] CI green on GitHub (run 41409570005, first attempt)
+- [x] Tag `m4-done`
 
 Found during this milestone:
 - A test helper created the circuit breaker with library defaults (open after 100 calls) before the service could configure it; the outage test caught it. Production code never looks breakers up by name.
@@ -80,7 +80,26 @@ Found during this milestone:
 - Mutation that removed the product-id sort before locking **survived**: with all of an order's rows locked in one statement, PostgreSQL's scan order is already consistent when plans match, as they do on small test tables. The `ORDER BY` stays so lock order does not depend on the query plan; no test here can force two different plans.
 - OpenAPI listed an inventory `sku` the service does not have and only one of four 422 causes; corrected.
 
-## Milestones 5–12
+## Milestone 5 — Kafka integration and transactional outbox
+
+- [x] `libs/messaging`: contract-validated outbox writes (MANDATORY transaction), per-aggregate versions, ordered publisher with a per-round advisory-lock leader and backoff, inbox dedupe in the consumer's transaction, blocking retries with jitter then `<topic>.dlt`, poison messages straight to DLT, correlation and causation ids carried across Kafka (ADR-0010)
+- [x] inventory-service consumes `OrderCreated` and saga commands (commit, release) and answers through its outbox; re-sent requests get the stored answer
+- [x] order-service writes `OrderCreated` in the order's transaction and moves orders on inventory's answer, guarded so duplicates and late events change nothing
+- [x] Messaging dashboard; alerts for stuck outbox, dead letters and consumer lag, with runbook entries
+- [x] Tests: messaging 10 (rollback, contract, order, redelivery, retry, DLT, poison once, outage, leader lock), inventory 43, order 23
+- [x] `check-infra`: 131 checks, including an order reserved via Kafka (PAYMENT_PROCESSING) and an oversized one failing as OUT_OF_STOCK
+- [x] Mutation checks: 7 of 7 caught
+- [ ] CI green on GitHub
+- [ ] Tag `m5-done`
+
+Found during this milestone:
+- The outbox backlog gauge froze during a Kafka outage, because the blocked publisher was the only thing refreshing it; an alert on it would never have fired. Now refreshed on its own thread.
+- Two guarantees had no test that could fail: a second publisher standing aside, and poison messages skipping retries (they reach the DLT either way). Both now have one, and the mutations that break them are caught.
+- A compose edit put `KAFKA_BOOTSTRAP` into postgres-init instead of the services; `docker compose config` caught the duplicate key.
+
+Not done yet, deliberately: catalog `ProductCreated`/`ProductUpdated` and identity `UserRegistered` are still not published (their consumers arrive with notification-service); `traceparent` across Kafka waits for tracing in Milestone 9.
+
+## Milestones 6–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

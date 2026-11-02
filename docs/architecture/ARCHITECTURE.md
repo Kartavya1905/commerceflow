@@ -833,8 +833,8 @@ commerceflow/
 ├── libs/                         shared Java libraries
 │   ├── security-tokens/          JWT rules shared by servlet services and the reactive gateway (M3)
 │   ├── web-common/               problem+json errors, correlation ids, audit writer (M3)
-│   ├── outbox/                   outbox entity, publisher, cleanup (M5)
-│   └── messaging/                envelope, dedupe, error handler, tracing headers (M5)
+│   ├── messaging/                outbox writer and publisher, inbox dedupe, retries and DLT (M5)
+│   └── test-support/             shared test tokens, containers, event builders (M4)
 ├── services/
 │   ├── api-gateway/
 │   ├── identity-service/

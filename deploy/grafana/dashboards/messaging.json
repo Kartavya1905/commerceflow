@@ -1,0 +1,86 @@
+{
+  "uid": "cf-messaging",
+  "title": "CommerceFlow / Messaging",
+  "description": "Is every committed event reaching Kafka, and is every consumer keeping up? Outbox backlog per service, events consumed (including recognised duplicates), and dead-letter traffic.",
+  "tags": ["commerceflow", "messaging"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Oldest unpublished outbox event (seconds)",
+      "description": "Near zero while Kafka is reachable. A rising line means committed events are waiting to be published: nothing is lost, but everything downstream is delayed. Alert: OutboxBacklogStuck.",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max by (service) (outbox_oldest_unpublished_age_seconds)", "legendFormat": "{{service}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "order-service" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } } ] },
+          { "matcher": { "id": "byName", "options": "inventory-service" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } } ] }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Unpublished outbox events",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max by (service) (outbox_pending)", "legendFormat": "{{service}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0, "decimals": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "order-service" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } } ] },
+          { "matcher": { "id": "byName", "options": "inventory-service" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } } ] }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Events consumed per second, by consumer and outcome",
+      "description": "'duplicate' counts redelivered events that were recognised and skipped: expected after restarts or publisher retries, harmless by design.",
+      "gridPos": { "x": 0, "y": 8, "w": 16, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (consumer, outcome) (rate(messaging_consumed_total[2m]))", "legendFormat": "{{consumer}} / {{outcome}}" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Dead-lettered in the last hour",
+      "description": "Messages that failed every retry, or could never be processed. Each one needs a look. Alert: DeadLetterMessages.",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(kafka_topic_partition_current_offset{topic=~\".*\\\\.dlt\"}[1h])) or vector(0)", "instant": true }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "textMode": "value" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [ { "type": "value", "options": { "0": { "text": "0 (clear)", "index": 0 } } } ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "#d03b3b", "value": 1 } ] },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

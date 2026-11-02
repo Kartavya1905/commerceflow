@@ -38,6 +38,34 @@ docker compose -f deploy/compose/docker-compose.yml --env-file .env
 | gateway 401 on every protected call | identity-service is down, so the gateway cannot fetch the JWKS |
 | 429 from the gateway | per-client rate limit; raise `GATEWAY_RATE` / `GATEWAY_AUTH_RATE` for load tests |
 
+## Outbox backlog stuck
+
+Alert `OutboxBacklogStuck`: a service has committed events that have not reached Kafka for over a minute. Nothing is lost (the events are safe in that service's `outbox_events` table), but everything downstream of them waits.
+
+1. Is Kafka up? `C ps kafka`; Grafana → CommerceFlow / Messaging shows which service is stuck.
+2. What does the publisher say? `C --profile apps logs <service> | grep -i outbox`. "did not acknowledge" means Kafka refused or timed out.
+3. Inspect the stuck rows (as the service's role, see "SQL as a service role" above):
+   `select seq, event_type, publish_attempts, last_error from outbox_events where published_at is null order by seq limit 20;`
+4. Once Kafka is reachable the publisher drains the backlog by itself, in order. Do not edit or delete outbox rows by hand.
+
+## Dead-letter messages
+
+Alert `DeadLetterMessages`: a message failed every retry, or could never be processed (not JSON, unknown version), and was moved to `<topic>.dlt` so its partition could keep moving.
+
+1. Read it, with the failure reason Spring Kafka attached as headers:
+   `C exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:29092 --topic order.events.v1.dlt --from-beginning --property print.headers=true --property print.key=true --max-messages 5`
+   The `kafka_dlt-exception-message` header says why.
+2. Fix the cause (a bug, or a broken dependency that is now back).
+3. Replay tooling arrives in Milestone 7. Until then, a message can be re-sent to its original topic by hand; consumers are idempotent, so replaying something already applied is harmless.
+
+## Consumer lag growing
+
+Alert `ConsumerLagGrowing`: a consumer group is more than 100 messages behind for 5 minutes.
+
+1. Grafana → Infrastructure overview → consumer lag shows which group and topic.
+2. Is the service healthy? Slow handlers usually mean a slow database: check its logs for timeouts.
+3. A message that keeps failing does not cause lasting lag: after its retries it goes to the dead-letter topic and the partition moves on.
+
 ## Config changes do not take effect
 
 Config files under `deploy/compose/` are bind-mounted, and `docker compose up` does not restart a container when only a mounted file changed. `dev-up --obs` reloads Prometheus automatically. For anything else: `C --profile obs restart <service>`.

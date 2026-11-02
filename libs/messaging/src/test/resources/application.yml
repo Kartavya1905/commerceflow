@@ -1,0 +1,40 @@
+spring:
+  sql:
+    init:
+      # The library's reference DDL, applied directly; services copy it into their own Flyway
+      # migrations because each service owns its schema.
+      mode: always
+      schema-locations: classpath:db/messaging/outbox-and-inbox.sql,classpath:test-schema.sql
+  flyway:
+    enabled: false
+  kafka:
+    consumer:
+      group-id: messaging-it
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      isolation-level: read-committed
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        # Short, so the outage test does not wait minutes for a send to give up.
+        max.block.ms: 2000
+        request.timeout.ms: 2000
+        delivery.timeout.ms: 6000
+    listener:
+      ack-mode: record
+
+commerceflow:
+  messaging:
+    # OrderCreated's contract says it comes from order-service, so the test app claims to be it.
+    producer: order-service
+    poll-interval: 100ms
+    max-backoff: 1s
+    backlog-refresh: 300ms
+    retry-attempts: 3
+    retry-initial: 100ms
+    retry-max: 400ms

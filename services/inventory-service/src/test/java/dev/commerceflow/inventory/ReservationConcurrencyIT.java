@@ -35,7 +35,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * threads, so they really do race for the same rows.
  */
 @SpringBootTest
-@Import({Containers.Postgres.class, TestTokens.class})
+@Import({Containers.Postgres.class, Containers.Kafka.class, TestTokens.class})
 class ReservationConcurrencyIT {
 
   @Autowired ReservationService reservations;

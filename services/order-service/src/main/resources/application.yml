@@ -24,6 +24,29 @@ spring:
       # A request with a field we do not define (say, a client-supplied price) is rejected
       # instead of silently ignored.
       fail-on-unknown-properties: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: order-service
+      auto-offset-reset: earliest
+      # Offsets are committed only after the handler's transaction commits (ack-mode record).
+      enable-auto-commit: false
+      isolation-level: read-committed
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 5000
+        request.timeout.ms: 10000
+        delivery.timeout.ms: 30000
+    listener:
+      ack-mode: record
+      concurrency: 3
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
@@ -50,6 +73,8 @@ management:
       enabled: false
 
 commerceflow:
+  messaging:
+    producer: order-service
   order:
     jwk-set-uri: ${JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
     catalog-uri: ${CATALOG_URI:http://localhost:8082}

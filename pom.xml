@@ -24,6 +24,7 @@
     <module>libs/security-tokens</module>
     <module>libs/web-common</module>
     <module>libs/test-support</module>
+    <module>libs/messaging</module>
     <module>services/identity-service</module>
     <module>services/catalog-service</module>
     <module>services/api-gateway</module>
@@ -64,6 +65,11 @@
       <dependency>
         <groupId>dev.commerceflow</groupId>
         <artifactId>web-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.commerceflow</groupId>
+        <artifactId>messaging</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

@@ -28,7 +28,12 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest(properties = "commerceflow.order.breaker-open-for=1s")
 @AutoConfigureMockMvc
-@Import({Containers.Postgres.class, Containers.Redis.class, TestTokens.class})
+@Import({
+  Containers.Postgres.class,
+  Containers.Redis.class,
+  Containers.Kafka.class,
+  TestTokens.class
+})
 class CatalogOutageIT {
 
   static final FakeCatalog CATALOG = new FakeCatalog();

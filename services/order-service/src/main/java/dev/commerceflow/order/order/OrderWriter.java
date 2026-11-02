@@ -1,5 +1,6 @@
 package dev.commerceflow.order.order;
 
+import dev.commerceflow.messaging.OutboxWriter;
 import dev.commerceflow.order.pricing.CatalogClient.Price;
 import dev.commerceflow.web.audit.AuditWriter;
 import dev.commerceflow.web.audit.AuditWriter.Outcome;
@@ -23,11 +24,13 @@ class OrderWriter {
 
   private final JdbcClient jdbc;
   private final AuditWriter audit;
+  private final OutboxWriter outbox;
   private final Clock clock;
 
-  OrderWriter(JdbcClient jdbc, AuditWriter audit, Clock clock) {
+  OrderWriter(JdbcClient jdbc, AuditWriter audit, OutboxWriter outbox, Clock clock) {
     this.jdbc = jdbc;
     this.audit = audit;
+    this.outbox = outbox;
     this.clock = clock;
   }
 
@@ -105,6 +108,25 @@ class OrderWriter {
         orderId.toString(),
         Outcome.SUCCESS,
         Map.of("totalMinor", totalMinor, "currency", currency, "lines", order.lines().size()));
+    // Same transaction as the order: OrderCreated exists if and only if the order does.
+    outbox.append(
+        "OrderCreated",
+        "Order",
+        orderId,
+        Map.of(
+            "orderId", orderId,
+            "customerId", customerId,
+            "items",
+                order.lines().stream()
+                    .map(
+                        line ->
+                            Map.of(
+                                "productId", line.productId(),
+                                "quantity", line.quantity(),
+                                "unitPriceMinor", prices.get(line.productId()).priceMinor()))
+                    .toList(),
+            "totalMinor", totalMinor,
+            "currency", currency));
     return Optional.of(orderId);
   }
 

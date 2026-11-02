@@ -4,6 +4,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -15,6 +16,7 @@ public final class Containers {
 
   public static final String POSTGRES_IMAGE = "postgres:18.6";
   public static final String REDIS_IMAGE = "redis:8.10.3";
+  public static final String KAFKA_IMAGE = "apache/kafka:4.3.2";
 
   private Containers() {}
 
@@ -24,6 +26,16 @@ public final class Containers {
     @ServiceConnection
     PostgreSQLContainer postgres() {
       return new PostgreSQLContainer(POSTGRES_IMAGE);
+    }
+  }
+
+  /** Same image as docker-compose. Auto-creates topics, which production deliberately does not. */
+  @TestConfiguration(proxyBeanMethods = false)
+  public static class Kafka {
+    @Bean
+    @ServiceConnection
+    KafkaContainer kafka() {
+      return new KafkaContainer(KAFKA_IMAGE);
     }
   }
 

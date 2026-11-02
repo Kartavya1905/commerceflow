@@ -37,7 +37,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({Containers.Postgres.class, Containers.Redis.class, TestTokens.class})
+@Import({
+  Containers.Postgres.class,
+  Containers.Redis.class,
+  Containers.Kafka.class,
+  TestTokens.class
+})
 class OrderApiIT {
 
   static final FakeCatalog CATALOG = new FakeCatalog();

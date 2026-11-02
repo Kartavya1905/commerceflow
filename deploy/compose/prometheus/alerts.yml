@@ -21,6 +21,34 @@ groups:
           summary: "kafka-exporter sees no Kafka broker"
           runbook: docs/runbooks/infra.md#kafka-broker-unreachable
 
+      - alert: OutboxBacklogStuck
+        # Events are committed but not reaching Kafka. Nothing is lost; everything downstream waits.
+        expr: max by (job, service) (outbox_oldest_unpublished_age_seconds) > 60
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} has had an unpublished event for over a minute"
+          runbook: docs/runbooks/infra.md#outbox-backlog-stuck
+
+      - alert: DeadLetterMessages
+        # A message failed every retry (or could never be processed) and was parked for a human.
+        expr: sum by (topic) (increase(kafka_topic_partition_current_offset{topic=~".*\\.dlt"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "New messages in {{ $labels.topic }}"
+          runbook: docs/runbooks/infra.md#dead-letter-messages
+
+      - alert: ConsumerLagGrowing
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.consumergroup }} is more than 100 messages behind on {{ $labels.topic }}"
+          runbook: docs/runbooks/infra.md#consumer-lag-growing
+
       - alert: KafkaTopicMissing
         expr: absent(kafka_topic_partitions{topic="order.events.v1"})
         for: 2m

@@ -345,8 +345,29 @@ if container_running api-gateway; then
   [[ "$(tail -n 1 <<< "$replay")" == 200 && -n "$order_id" && "$replay_id" == "$order_id" ]] &&
     pass "retrying with the same Idempotency-Key returns the same order" || fail "replay returned: $replay"
 
-  curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$order_id" | grep -q '"status":"PENDING"' &&
-    pass "the customer sees the order as PENDING" || fail "the customer cannot read the order"
+  # Milestone 5: OrderCreated goes through the outbox and Kafka to inventory, whose answer comes
+  # back the same way and moves the order on.
+  order_status() {
+    curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$1" | sed -n 's/.*"status":"\([A-Z_]*\)".*/\1/p'
+  }
+  reserved() { [[ "$(order_status "$order_id")" == PAYMENT_PROCESSING ]]; }
+  if eventually 30 reserved; then pass "inventory reserved the stock via Kafka and the order moved to PAYMENT_PROCESSING"
+  else fail "order $order_id is $(order_status "$order_id"), expected PAYMENT_PROCESSING"; fi
+  curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q '"available":3' &&
+    pass "the reservation took 2 of the 5 units" || fail "availability after reservation is wrong"
+
+  big_key="check-infra-$(random_secret | head -c 20)"
+  too_many=$(curl -s --max-time 10 -H "Authorization: Bearer $customer" -H "Idempotency-Key: $big_key" \
+    -H 'Content-Type: application/json' \
+    -d "{\"items\":[{\"productId\":\"$product_id\",\"quantity\":50}],\"paymentToken\":\"tok_success\"}" \
+    "$gw/api/v1/orders" | json_field id)
+  out_of_stock() {
+    curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$too_many" | grep -q '"failureReason":"OUT_OF_STOCK"'
+  }
+  if [[ -n "$too_many" ]] && eventually 30 out_of_stock; then pass "an order for more than is in stock fails as OUT_OF_STOCK"
+  else fail "the oversized order ($too_many) did not fail as OUT_OF_STOCK"; fi
+  curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q '"available":3' &&
+    pass "the rejected order took no stock" || fail "a rejected order changed availability"
   other_email="check-infra-$(random_secret | head -c 10)@example.com"
   http_status -H 'Content-Type: application/json' \
     -d "{\"email\":\"$other_email\",\"password\":\"$password\",\"displayName\":\"Other\"}" "$gw/api/v1/auth/register" > /dev/null
@@ -363,6 +384,13 @@ if container_running api-gateway; then
         grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 5 ]]
     }
     if eventually 60 services_up; then pass "prometheus scrapes all five services"; else fail "prometheus is not scraping all five services"; fi
+    outbox_metrics() {
+      [[ $(curl -sS --get --data-urlencode 'query=count(outbox_pending)' http://127.0.0.1:9090/api/v1/query |
+        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 2 ]]
+    }
+    if eventually 60 outbox_metrics; then pass "both publishing services report their outbox backlog"; else fail "outbox_pending is missing for order or inventory"; fi
+    check "the outbox, dead-letter and consumer-lag alert rules are loaded" bash -c \
+      "curl -sS http://127.0.0.1:9090/api/v1/rules | grep -q OutboxBacklogStuck && curl -sS http://127.0.0.1:9090/api/v1/rules | grep -q DeadLetterMessages"
   fi
 else
   echo "-- services: skipped (start with scripts/dev-up.sh --apps to include them)"

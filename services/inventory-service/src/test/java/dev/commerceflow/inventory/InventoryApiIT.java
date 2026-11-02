@@ -21,7 +21,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({Containers.Postgres.class, TestTokens.class})
+@Import({Containers.Postgres.class, Containers.Kafka.class, TestTokens.class})
 class InventoryApiIT {
 
   @Autowired MockMvc mvc;

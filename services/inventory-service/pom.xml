@@ -20,6 +20,10 @@
       <groupId>dev.commerceflow</groupId>
       <artifactId>web-common</artifactId>
     </dependency>
+    <dependency>
+      <groupId>dev.commerceflow</groupId>
+      <artifactId>messaging</artifactId>
+    </dependency>
     <!-- Plain JDBC: reservation logic is explicit SQL with explicit row locks. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

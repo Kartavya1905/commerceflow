@@ -30,7 +30,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 /** Every transition of a reservation, including the out-of-order and repeated ones. */
 @SpringBootTest
-@Import({Containers.Postgres.class, TestTokens.class})
+@Import({Containers.Postgres.class, Containers.Kafka.class, TestTokens.class})
 class ReservationLifecycleIT {
 
   @Autowired ReservationService reservations;
