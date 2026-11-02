@@ -51,7 +51,7 @@ class RedisDownIT {
 
     assertThatThrownBy(() -> cache.get("probe"))
         .isInstanceOf(RedisConnectionFailureException.class);
-    assertThatCode(() -> writer.remove("catalog:product::", "probe".getBytes()))
+    assertThatCode(() -> writer.evict("catalog:product::", "probe".getBytes()))
         .doesNotThrowAnyException();
     assertThatCode(() -> writer.put("catalog:product::", "probe".getBytes(), "v".getBytes(), null))
         .doesNotThrowAnyException();

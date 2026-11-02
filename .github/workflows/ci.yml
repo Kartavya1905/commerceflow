@@ -28,14 +28,27 @@ jobs:
       # Formatting (spotless:check in validate), compile, unit tests (Surefire), then integration
       # tests (Failsafe) against PostgreSQL and Redis in Testcontainers.
       - name: Build and test
-        run: ./mvnw -B -ntp verify
+        run: ./mvnw -B -ntp verify 2>&1 | tee build.log
+
+      # Logs and artifacts need a GitHub login to read; annotations do not. Publishing the Maven
+      # error lines as annotations makes a failure diagnosable from the public run page and API.
+      - name: Report failures as annotations
+        if: failure()
+        run: |
+          grep -E '^\[ERROR\]' build.log \
+            | grep -vE '^\[ERROR\] *$|Re-run Maven|For more information|\[Help 1\]|^\[ERROR\] -> |resume the build' \
+            | head -10 \
+            | while IFS= read -r line; do echo "::error title=build::${line:0:900}"; done
 
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: surefire-reports
-          path: '**/target/surefire-reports/'
+          name: test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+            build.log
           retention-days: 7
 
   shell-lint:
