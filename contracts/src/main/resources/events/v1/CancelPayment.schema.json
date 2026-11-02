@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/CancelPayment.schema.json",
+  "title": "CancelPayment v1",
+  "description": "Compensating command: refund the order's payment if it succeeded, or leave a CANCELLED tombstone so a late AuthorizePayment cannot charge.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "CancelPayment" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "order-service" },
+    "aggregateType": { "const": "Order" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "reason"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "reason": { "enum": ["SAGA_TIMEOUT", "COMMIT_FAILED"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

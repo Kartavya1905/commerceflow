@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/UserRegistered.schema.json",
+  "title": "UserRegistered v1",
+  "description": "A user account was created. Contains personal data (email); consumed only by notification-service.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "UserRegistered" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "identity-service" },
+    "aggregateType": { "const": "User" },
+    "payload": {
+      "type": "object",
+      "required": ["userId", "email", "displayName"],
+      "properties": {
+        "userId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

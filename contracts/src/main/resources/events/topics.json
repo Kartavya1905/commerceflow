@@ -1,0 +1,80 @@
+{
+  "description": "Machine-readable topic catalogue. TopicCatalogConsistencyTest keeps it in sync with the schemas and ARCHITECTURE.md section F.2. Milestone 2 creates topics from this file.",
+  "deadLetter": { "suffix": ".dlt", "retentionDays": 14 },
+  "topics": [
+    {
+      "name": "order.events.v1",
+      "keyField": "orderId",
+      "partitions": 6,
+      "retentionDays": 7,
+      "producer": "order-service",
+      "consumers": ["inventory-service", "notification-service"],
+      "messages": ["OrderCreated", "OrderConfirmed", "OrderFailed"]
+    },
+    {
+      "name": "inventory.commands.v1",
+      "keyField": "orderId",
+      "partitions": 6,
+      "retentionDays": 7,
+      "producer": "order-service",
+      "consumers": ["inventory-service"],
+      "messages": ["CommitInventory", "ReleaseInventory"]
+    },
+    {
+      "name": "inventory.events.v1",
+      "keyField": "orderId",
+      "partitions": 6,
+      "retentionDays": 7,
+      "producer": "inventory-service",
+      "consumers": ["order-service"],
+      "messages": [
+        "InventoryReserved",
+        "InventoryRejected",
+        "InventoryCommitted",
+        "InventoryCommitFailed",
+        "InventoryReleased"
+      ]
+    },
+    {
+      "name": "payment.commands.v1",
+      "keyField": "orderId",
+      "partitions": 6,
+      "retentionDays": 7,
+      "producer": "order-service",
+      "consumers": ["payment-service"],
+      "messages": ["AuthorizePayment", "CancelPayment"]
+    },
+    {
+      "name": "payment.events.v1",
+      "keyField": "orderId",
+      "partitions": 6,
+      "retentionDays": 7,
+      "producer": "payment-service",
+      "consumers": ["order-service"],
+      "messages": [
+        "PaymentSucceeded",
+        "PaymentFailed",
+        "PaymentPendingReconciliation",
+        "PaymentRefunded"
+      ]
+    },
+    {
+      "name": "catalog.events.v1",
+      "keyField": "productId",
+      "partitions": 3,
+      "retentionDays": 7,
+      "producer": "catalog-service",
+      "consumers": ["inventory-service"],
+      "messages": ["ProductCreated", "ProductUpdated"]
+    },
+    {
+      "name": "identity.events.v1",
+      "keyField": "userId",
+      "partitions": 3,
+      "retentionDays": 7,
+      "producer": "identity-service",
+      "consumers": ["notification-service"],
+      "messages": ["UserRegistered"]
+    }
+  ]
+}

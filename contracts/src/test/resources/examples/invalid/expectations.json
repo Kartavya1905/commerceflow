@@ -1,0 +1,18 @@
+{
+  "OrderCreated--negative-quantity.json": "/payload/items/0/quantity",
+  "OrderCreated--float-money.json": "/payload/items/0/unitPriceMinor",
+  "OrderCreated--missing-event-id.json": "eventId",
+  "OrderCreated--empty-items.json": "/payload/items",
+  "OrderCreated--total-mismatch.json": "/payload/totalMinor",
+  "OrderCreated--duplicate-product-lines.json": "appears more than once",
+  "OrderCreated--key-mismatch.json": "must equal aggregateId",
+  "AuthorizePayment--card-number-field.json": "cardNumber",
+  "AuthorizePayment--card-number-as-token.json": "/payload/paymentToken",
+  "PaymentSucceeded--wrong-producer.json": "/producer",
+  "UserRegistered--bad-email.json": "/payload/email",
+  "InventoryReserved--unknown-envelope-field.json": "retryCount",
+  "OrderFailed--unknown-reason.json": "/payload/reason",
+  "ProductCreated--lowercase-currency.json": "/payload/currency",
+  "OrderConfirmed--bad-occurred-at.json": "/occurredAt",
+  "PaymentFailed--wrong-event-version.json": "/eventVersion"
+}

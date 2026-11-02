@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/AuthorizePayment.schema.json",
+  "title": "AuthorizePayment v1",
+  "description": "Command from the saga: charge the customer for this order. Idempotent by orderId.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "AuthorizePayment" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "order-service" },
+    "aggregateType": { "const": "Order" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "customerId", "amountMinor", "currency", "paymentToken"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "customerId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "amountMinor": { "$ref": "envelope.schema.json#/$defs/positiveAmountMinor" },
+        "currency": { "$ref": "envelope.schema.json#/$defs/currency" },
+        "paymentToken": {
+          "type": "string",
+          "pattern": "^tok_[a-z0-9_]{1,64}$",
+          "description": "Opaque sandbox token. Card numbers and CVVs never enter the system."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

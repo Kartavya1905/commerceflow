@@ -1,0 +1,14 @@
+* text=auto
+
+# Scripts run inside Linux containers and CI: always LF, or they fail with "bad interpreter".
+*.sh text eol=lf
+mvnw text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Windows scripts keep CRLF.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.jar binary
+*.png binary

@@ -1,0 +1,13 @@
+{
+  "eventId": "0192f3c5-0000-7000-8000-000000000012",
+  "eventType": "ProductCreated",
+  "eventVersion": 1,
+  "occurredAt": "2026-11-01T10:15:30.123Z",
+  "producer": "catalog-service",
+  "aggregateType": "Product",
+  "aggregateId": "0192f3c4-2222-7aaa-8bbb-00000000000a",
+  "aggregateVersion": 1,
+  "correlationId": "req-7f3a9c1e",
+  "causationId": null,
+  "payload": { "productId": "0192f3c4-2222-7aaa-8bbb-00000000000a", "sku": "MUG-CERAMIC-01", "name": "Ceramic mug", "priceMinor": 1999, "currency": "usd", "status": "ACTIVE" }
+}

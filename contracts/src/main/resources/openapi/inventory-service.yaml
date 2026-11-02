@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: CommerceFlow inventory-service
+  version: 0.1.0
+  description: Public availability and admin stock management. Reservations are driven by Kafka, not REST.
+servers:
+  - url: http://localhost:8080
+    description: Through the API gateway
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/inventory/{productId}:
+    get:
+      operationId: getAvailability
+      summary: Whether a product is in stock
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Availability
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [productId, available, inStock]
+                properties:
+                  productId: { type: string, format: uuid }
+                  available: { type: integer, minimum: 0 }
+                  inStock: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/inventory/{productId}:
+    get:
+      operationId: adminGetStock
+      summary: Full stock breakdown (admin)
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Stock levels
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stock' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/inventory/{productId}/adjustments:
+    post:
+      operationId: adminAdjustStock
+      summary: Add or write off available stock (admin, audited)
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delta, reason]
+              additionalProperties: false
+              properties:
+                delta:
+                  type: integer
+                  minimum: -100000
+                  maximum: 100000
+                  not: { const: 0 }
+                reason: { type: string, enum: [RESTOCK, WRITE_OFF, CORRECTION] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: New stock levels
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The adjustment would make available stock negative
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Stock:
+      type: object
+      required: [productId, sku, available, reserved, committed, version]
+      properties:
+        productId: { type: string, format: uuid }
+        sku: { type: string }
+        available: { type: integer, minimum: 0 }
+        reserved: { type: integer, minimum: 0 }
+        committed: { type: integer, minimum: 0 }
+        version: { type: integer }
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Never contains stack traces, SQL, or secrets.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        correlationId: { type: string }
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Missing, invalid, or expired credentials
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: No such product in inventory
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

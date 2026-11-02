@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/ReleaseInventory.schema.json",
+  "title": "ReleaseInventory v1",
+  "description": "Compensating command from the saga: return this order's reserved stock. A no-op if nothing is reserved.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "ReleaseInventory" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "order-service" },
+    "aggregateType": { "const": "Order" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "reason"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "reason": {
+          "enum": ["PAYMENT_FAILED", "RESERVATION_TIMEOUT", "PAYMENT_TIMEOUT", "COMMIT_FAILED"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/InventoryReserved.schema.json",
+  "title": "InventoryReserved v1",
+  "description": "Every line of the order was reserved in one transaction.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "InventoryReserved" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "inventory-service" },
+    "aggregateType": { "const": "OrderReservation" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "reservations"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "reservations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": ["productId", "quantity"],
+            "properties": {
+              "productId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+              "quantity": { "$ref": "envelope.schema.json#/$defs/quantity" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

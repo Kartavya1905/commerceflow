@@ -1,0 +1,13 @@
+{
+  "eventId": "0192f3c5-0000-7000-8000-000000000014",
+  "eventType": "UserRegistered",
+  "eventVersion": 1,
+  "occurredAt": "2026-11-01T10:15:30.123Z",
+  "producer": "identity-service",
+  "aggregateType": "User",
+  "aggregateId": "0192f3c4-1111-7aaa-8bbb-000000000001",
+  "aggregateVersion": 1,
+  "correlationId": "req-7f3a9c1e",
+  "causationId": null,
+  "payload": { "userId": "0192f3c4-1111-7aaa-8bbb-000000000001", "email": "ada@example.com", "displayName": "Ada" }
+}

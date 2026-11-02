@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/PaymentRefunded.schema.json",
+  "title": "PaymentRefunded v1",
+  "description": "A successful charge for this order was refunded in full.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "PaymentRefunded" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "aggregateType": { "const": "OrderPayment" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "paymentAttemptId", "providerRefundId", "amountMinor", "currency"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "paymentAttemptId": { "$ref": "envelope.schema.json#/$defs/paymentAttemptId" },
+        "providerRefundId": { "type": "string", "pattern": "^re_[A-Za-z0-9]{8,64}$" },
+        "amountMinor": { "$ref": "envelope.schema.json#/$defs/positiveAmountMinor" },
+        "currency": { "$ref": "envelope.schema.json#/$defs/currency" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

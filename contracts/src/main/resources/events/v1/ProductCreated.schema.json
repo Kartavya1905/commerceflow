@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/ProductCreated.schema.json",
+  "title": "ProductCreated v1",
+  "description": "A product was added to the catalog. Inventory creates a stock row with zero units.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "ProductCreated" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "catalog-service" },
+    "aggregateType": { "const": "Product" },
+    "payload": { "$ref": "#/$defs/productState" }
+  },
+  "$defs": {
+    "productState": {
+      "type": "object",
+      "required": ["productId", "sku", "name", "priceMinor", "currency", "status"],
+      "properties": {
+        "productId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "sku": { "type": "string", "pattern": "^[A-Z0-9-]{3,40}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "priceMinor": { "$ref": "envelope.schema.json#/$defs/amountMinor" },
+        "currency": { "$ref": "envelope.schema.json#/$defs/currency" },
+        "status": { "enum": ["ACTIVE", "ARCHIVED"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

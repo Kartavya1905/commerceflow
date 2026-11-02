@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/envelope.schema.json",
+  "title": "Event envelope v1",
+  "description": "Fields every CommerceFlow Kafka message carries. Event schemas combine this with a typed payload.",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "producer",
+    "aggregateType",
+    "aggregateId",
+    "aggregateVersion",
+    "correlationId",
+    "payload"
+  ],
+  "properties": {
+    "eventId": { "$ref": "#/$defs/uuid", "description": "Unique per message. Consumers deduplicate on it." },
+    "eventType": { "type": "string", "pattern": "^[A-Z][A-Za-z]{2,63}$" },
+    "eventVersion": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": {
+      "enum": [
+        "identity-service",
+        "catalog-service",
+        "order-service",
+        "inventory-service",
+        "payment-service"
+      ]
+    },
+    "aggregateType": { "enum": ["Order", "OrderReservation", "OrderPayment", "Product", "User"] },
+    "aggregateId": { "$ref": "#/$defs/uuid", "description": "Equals the Kafka message key." },
+    "aggregateVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Increases by one for each event the producer emits for this aggregate."
+    },
+    "correlationId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$" },
+    "causationId": {
+      "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }],
+      "description": "eventId of the message that caused this one, or null for messages caused by an API request."
+    },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 code." },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100000000000,
+      "description": "Money in the currency's minor unit (cents). Never a floating-point number."
+    },
+    "positiveAmountMinor": { "$ref": "#/$defs/amountMinor", "minimum": 1 },
+    "quantity": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "paymentAttemptId": { "$ref": "#/$defs/uuid" }
+  }
+}

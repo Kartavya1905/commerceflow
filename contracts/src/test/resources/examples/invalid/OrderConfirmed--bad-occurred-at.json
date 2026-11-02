@@ -1,0 +1,13 @@
+{
+  "eventId": "0192f3c5-0000-7000-8000-000000000010",
+  "eventType": "OrderConfirmed",
+  "eventVersion": 1,
+  "occurredAt": "yesterday",
+  "producer": "order-service",
+  "aggregateType": "Order",
+  "aggregateId": "0192f3c4-7a1e-7b2c-9d4e-5f6a7b8c9d0e",
+  "aggregateVersion": 4,
+  "correlationId": "req-7f3a9c1e",
+  "causationId": "0192f3c5-0000-7000-8000-00000000000b",
+  "payload": { "orderId": "0192f3c4-7a1e-7b2c-9d4e-5f6a7b8c9d0e", "customerId": "0192f3c4-1111-7aaa-8bbb-000000000001", "totalMinor": 8498, "currency": "USD", "paymentAttemptId": "0192f3c4-3333-7aaa-8bbb-000000000001" }
+}

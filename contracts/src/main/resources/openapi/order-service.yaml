@@ -1,0 +1,338 @@
+openapi: 3.1.0
+info:
+  title: CommerceFlow order-service
+  version: 0.1.0
+  description: Cart, idempotent order submission, order history, and admin views of orders and sagas.
+servers:
+  - url: http://localhost:8080
+    description: Through the API gateway
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/cart:
+    get:
+      operationId: getCart
+      summary: The caller's cart
+      responses:
+        '200':
+          description: Cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      operationId: clearCart
+      summary: Empty the caller's cart
+      responses:
+        '204': { description: Cleared }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/cart/items/{productId}:
+    put:
+      operationId: setCartItem
+      summary: Set the quantity of one product in the cart
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              additionalProperties: false
+              properties:
+                quantity: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      operationId: removeCartItem
+      summary: Remove one product from the cart
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/orders:
+    post:
+      operationId: createOrder
+      summary: Submit an order (idempotent)
+      description: >-
+        Prices come from catalog-service, never from the request. Repeating a request with the
+        same Idempotency-Key and the same body returns the original order with 200. The same key
+        with a different body returns 422.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9-]{16,64}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+      responses:
+        '202':
+          description: Accepted and saved as PENDING; poll the Location header
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '200':
+          description: Replay of an earlier request with the same key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: Idempotency-Key reused with a different request body
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503':
+          description: Prices are temporarily unavailable; nothing was saved
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      operationId: listMyOrders
+      summary: The caller's order history, newest first
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/orders/{orderId}:
+    get:
+      operationId: getMyOrder
+      summary: One of the caller's orders
+      description: Another customer's order returns 404, not 403, so order ids cannot be probed.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/orders:
+    get:
+      operationId: adminListOrders
+      summary: All orders, filterable by status (admin)
+      x-required-role: ADMIN
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/admin/sagas:
+    get:
+      operationId: adminListSagas
+      summary: Saga instances, optionally only those past their deadline (admin)
+      x-required-role: ADMIN
+      parameters:
+        - name: stuck
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of saga instances
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Saga' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [PENDING, PAYMENT_PROCESSING, CONFIRMED, FAILED]
+    FailureReason:
+      type: string
+      description: Same values as OrderFailed.reason in the event contracts.
+      enum: [OUT_OF_STOCK, PAYMENT_DECLINED, PAYMENT_TIMEOUT, PRICE_UNAVAILABLE, INTERNAL_ERROR]
+    Cart:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: string, format: uuid }
+              quantity: { type: integer }
+    CreateOrderRequest:
+      type: object
+      required: [items, paymentToken]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [productId, quantity]
+            additionalProperties: false
+            properties:
+              productId: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1, maximum: 1000 }
+        paymentToken:
+          type: string
+          pattern: '^tok_[a-z0-9_]{1,64}$'
+          description: Sandbox token chosen in the UI, for example tok_success or tok_decline.
+    Order:
+      type: object
+      required: [id, status, items, totalMinor, currency, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        failureReason: { $ref: '#/components/schemas/FailureReason' }
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, name, quantity, unitPriceMinor]
+            properties:
+              productId: { type: string, format: uuid }
+              name: { type: string }
+              quantity: { type: integer }
+              unitPriceMinor: { type: integer }
+        totalMinor: { type: integer }
+        currency: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    OrderPage:
+      type: object
+      required: [items, page, size, totalItems]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Order' }
+        page: { type: integer }
+        size: { type: integer }
+        totalItems: { type: integer }
+    Saga:
+      type: object
+      required: [id, orderId, state, stepAttempts, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        state:
+          type: string
+          enum:
+            - AWAITING_RESERVATION
+            - AWAITING_PAYMENT
+            - AWAITING_RECONCILIATION
+            - CANCELLING_PAYMENT
+            - AWAITING_COMMIT
+            - REFUNDING_PAYMENT
+            - RELEASING_INVENTORY
+            - COMPLETED
+            - FAILED
+        stepAttempts: { type: integer }
+        deadlineAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Never contains stack traces, SQL, or secrets.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        correlationId: { type: string }
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Missing, invalid, or expired credentials
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: No such resource, or it belongs to someone else
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Rate limit exceeded; see the Retry-After header
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

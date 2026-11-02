@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/ProductUpdated.schema.json",
+  "title": "ProductUpdated v1",
+  "description": "A product's name, price, or status changed. Carries the full new state (event-carried state transfer).",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "ProductUpdated" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "catalog-service" },
+    "aggregateType": { "const": "Product" },
+    "payload": { "$ref": "ProductCreated.schema.json#/$defs/productState" }
+  }
+}

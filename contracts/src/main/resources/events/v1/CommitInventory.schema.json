@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/CommitInventory.schema.json",
+  "title": "CommitInventory v1",
+  "description": "Command from the saga: payment succeeded, move this order's reservations to committed.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "CommitInventory" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "order-service" },
+    "aggregateType": { "const": "Order" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,246 @@
+openapi: 3.1.0
+info:
+  title: CommerceFlow catalog-service
+  version: 0.1.0
+  description: Product browsing, full-text search, and admin product management. Prices are integers in minor units.
+servers:
+  - url: http://localhost:8080
+    description: Through the API gateway
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      summary: List or search active products
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Full-text search terms
+          schema: { type: string, maxLength: 200 }
+        - name: category
+          in: query
+          schema: { type: string, maxLength: 60 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: sort
+          in: query
+          schema: { type: string, enum: [relevance, priceAsc, priceDesc, newest], default: relevance }
+      responses:
+        '200':
+          description: A page of products
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/v1/products/{productId}:
+    get:
+      operationId: getProduct
+      summary: One active product
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/products:
+    post:
+      operationId: createProduct
+      summary: Create a product (admin)
+      x-required-role: ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductWrite' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/admin/products/{productId}:
+    put:
+      operationId: updateProduct
+      summary: Replace a product's editable fields (admin, optimistic locking)
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ProductWrite'
+                - type: object
+                  required: [version]
+                  properties:
+                    version: { type: integer, description: Version the admin last read; a mismatch returns 409 }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/admin/products/{productId}/archive:
+    post:
+      operationId: archiveProduct
+      summary: Hide a product from customers (admin)
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204': { description: Archived }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /internal/v1/prices:
+    get:
+      operationId: getPrices
+      summary: Authoritative prices for checkout (called by order-service, not routed by the gateway)
+      description: order-service forwards the customer's access token, so any authenticated caller is accepted.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 50
+            items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Prices for the products that exist and are active
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Price' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  schemas:
+    ProductWrite:
+      type: object
+      required: [sku, name, priceMinor, currency, category]
+      additionalProperties: false
+      properties:
+        sku: { type: string, pattern: '^[A-Z0-9-]{3,40}$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 4000 }
+        category: { type: string, minLength: 1, maxLength: 60 }
+        priceMinor: { type: integer, minimum: 0 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    Product:
+      type: object
+      required: [id, sku, name, category, priceMinor, currency, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        priceMinor: { type: integer }
+        currency: { type: string }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        version: { type: integer }
+    ProductPage:
+      type: object
+      required: [items, page, size, totalItems]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        page: { type: integer }
+        size: { type: integer }
+        totalItems: { type: integer }
+    Price:
+      type: object
+      required: [productId, name, priceMinor, currency]
+      properties:
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        priceMinor: { type: integer }
+        currency: { type: string }
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Never contains stack traces, SQL, or secrets.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        correlationId: { type: string }
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Missing, invalid, or expired credentials
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: No such resource
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Duplicate SKU or stale version
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Rate limit exceeded; see the Retry-After header
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/PaymentFailed.schema.json",
+  "title": "PaymentFailed v1",
+  "description": "Definitive failure: no money was taken for this order.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "PaymentFailed" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "aggregateType": { "const": "OrderPayment" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "paymentAttemptId", "reason"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "paymentAttemptId": { "$ref": "envelope.schema.json#/$defs/paymentAttemptId" },
+        "reason": { "enum": ["DECLINED", "INSUFFICIENT_FUNDS", "CANCELLED", "TIMEOUT_UNRESOLVED"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/InventoryCommitted.schema.json",
+  "title": "InventoryCommitted v1",
+  "description": "The order's reserved stock moved to committed.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "InventoryCommitted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "inventory-service" },
+    "aggregateType": { "const": "OrderReservation" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

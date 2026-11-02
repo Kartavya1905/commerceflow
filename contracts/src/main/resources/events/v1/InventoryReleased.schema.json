@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/InventoryReleased.schema.json",
+  "title": "InventoryReleased v1",
+  "description": "The order's reserved stock was returned to available, or there was nothing to release.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "InventoryReleased" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "inventory-service" },
+    "aggregateType": { "const": "OrderReservation" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

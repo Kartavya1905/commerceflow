@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/InventoryCommitFailed.schema.json",
+  "title": "InventoryCommitFailed v1",
+  "description": "The order's reservations could not be committed. The saga refunds the payment in response.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "InventoryCommitFailed" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "inventory-service" },
+    "aggregateType": { "const": "OrderReservation" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "reason"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "reason": { "enum": ["RESERVATION_NOT_FOUND", "RESERVATION_EXPIRED"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

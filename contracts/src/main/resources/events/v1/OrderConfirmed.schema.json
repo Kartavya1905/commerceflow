@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/OrderConfirmed.schema.json",
+  "title": "OrderConfirmed v1",
+  "description": "Terminal success: payment succeeded and inventory is committed.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "OrderConfirmed" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "order-service" },
+    "aggregateType": { "const": "Order" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "customerId", "totalMinor", "currency", "paymentAttemptId"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "customerId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "totalMinor": { "$ref": "envelope.schema.json#/$defs/amountMinor" },
+        "currency": { "$ref": "envelope.schema.json#/$defs/currency" },
+        "paymentAttemptId": { "$ref": "envelope.schema.json#/$defs/paymentAttemptId" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.commerceflow.local/events/v1/PaymentPendingReconciliation.schema.json",
+  "title": "PaymentPendingReconciliation v1",
+  "description": "The outcome is unknown (timeout or provider error). The reconciler will resolve it; the saga must not release stock yet.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "eventType": { "const": "PaymentPendingReconciliation" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "aggregateType": { "const": "OrderPayment" },
+    "payload": {
+      "type": "object",
+      "required": ["orderId", "paymentAttemptId", "reason"],
+      "properties": {
+        "orderId": { "$ref": "envelope.schema.json#/$defs/uuid" },
+        "paymentAttemptId": { "$ref": "envelope.schema.json#/$defs/paymentAttemptId" },
+        "reason": { "enum": ["PROVIDER_TIMEOUT", "PROVIDER_ERROR"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}
