@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.slf4j.MDC;
@@ -42,6 +43,52 @@ public class InboundEvents {
    */
   public void handle(
       ConsumerRecord<String, String> record, String consumer, Consumer<InboundEvent> action) {
+    run(
+        record,
+        consumer,
+        event ->
+            tx.execute(
+                status -> {
+                  int first =
+                      jdbc.sql(
+                              """
+                              insert into processed_events (consumer, event_id, processed_at)
+                              values (:consumer, :id, now())
+                              on conflict (consumer, event_id) do nothing
+                              """)
+                          .param("consumer", consumer)
+                          .param("id", event.eventId())
+                          .update();
+                  if (first == 0) {
+                    return false;
+                  }
+                  action.accept(event);
+                  return true;
+                }));
+  }
+
+  /**
+   * For a handler that has to call another system, which must never happen inside a transaction: a
+   * slow provider would hold a pooled connection, and row locks, for as long as it takes. There is
+   * no surrounding transaction and no event-id dedupe here. The handler runs its own short
+   * transactions and must be idempotent by business key (payment-service keys on the order). The
+   * correlation, causation and metrics are as for {@link #handle}.
+   */
+  public void handleUntransacted(
+      ConsumerRecord<String, String> record, String consumer, Consumer<InboundEvent> action) {
+    run(
+        record,
+        consumer,
+        event -> {
+          action.accept(event);
+          return true;
+        });
+  }
+
+  private void run(
+      ConsumerRecord<String, String> record,
+      String consumer,
+      Function<InboundEvent, Boolean> body) {
     InboundEvent event;
     try {
       event = parse(record);
@@ -56,25 +103,7 @@ public class InboundEvents {
         event.correlationId() != null ? event.correlationId() : "evt-" + event.eventId());
     EventContext.enter(event.eventId());
     try {
-      Boolean applied =
-          tx.execute(
-              status -> {
-                int first =
-                    jdbc.sql(
-                            """
-                            insert into processed_events (consumer, event_id, processed_at)
-                            values (:consumer, :id, now())
-                            on conflict (consumer, event_id) do nothing
-                            """)
-                        .param("consumer", consumer)
-                        .param("id", event.eventId())
-                        .update();
-                if (first == 0) {
-                  return false;
-                }
-                action.accept(event);
-                return true;
-              });
+      Boolean applied = body.apply(event);
       meters
           .counter(
               "messaging.consumed",

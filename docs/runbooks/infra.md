@@ -19,7 +19,7 @@ docker compose -f deploy/compose/docker-compose.yml --env-file .env
 
 ## Running the services
 
-- `scripts/dev-up.sh --apps` builds the jars on your machine, builds the images, and starts identity-service (:8081), catalog-service (:8082) and api-gateway (:8080). Run it again after changing code; it rebuilds what changed.
+- `scripts/dev-up.sh --apps` builds the jars on your machine, builds the images, and starts identity-service (:8081), catalog-service (:8082), order-service (:8083), inventory-service (:8084), payment-service (:8085), payment-sandbox (inside the network only) and api-gateway (:8080). Run it again after changing code; it rebuilds what changed.
 - Use the gateway (http://localhost:8080) for normal calls. The service ports are published on localhost only for debugging.
 - The first admin is created from `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`, only if no admin exists yet.
 - Non-browser clients get the refresh token in the response body by sending `X-Token-Delivery: body`; browsers get an HttpOnly cookie instead.
@@ -57,6 +57,22 @@ Alert `DeadLetterMessages`: a message failed every retry, or could never be proc
    The `kafka_dlt-exception-message` header says why.
 2. Fix the cause (a bug, or a broken dependency that is now back).
 3. Replay tooling arrives in Milestone 7. Until then, a message can be re-sent to its original topic by hand; consumers are idempotent, so replaying something already applied is harmless.
+
+## An order is stuck in checkout
+
+An order stays `PENDING` or `PAYMENT_PROCESSING`. The saga knows why:
+
+1. `GET /api/v1/admin/sagas?stuck=true` (admin token, through the gateway) lists sagas past their deadline. `state` names the step it is waiting on.
+2. In `AWAITING_RECONCILIATION`, the payment's outcome is unknown (provider timeout or error), and `GET /api/v1/admin/payments?orderId=<id>` shows the attempt as `UNKNOWN`. This is deliberate. The charge may have happened, so the stock stays held until the outcome is known. The reconciler that resolves it arrives in Milestone 7. Never fail such an order by hand: it may have been paid for.
+3. In any other waiting state, the answer it is waiting for has not arrived. Check the answering service is healthy and its outbox is draining ("Outbox backlog stuck" above), and that nothing for the order is in a dead-letter topic.
+4. Until the sweeper (Milestone 7), a lost answer is not re-requested automatically. Do not edit `saga_instances` or `orders` by hand. The saga's row lock and guarded updates are what keep stock, money and status in step.
+
+## Payments
+
+- payment-service never calls the provider inside a database transaction, and each order has at most one payment attempt, whose id is the provider's idempotency key. `payment_attempts` is the record. In the sandbox, `charges.idempotency_key` is that same attempt id, so the two can be compared directly.
+- `UNKNOWN`: the provider did not answer usably. `REFUND_PENDING`: money was taken for an order that is being cancelled, and the refund is in progress (retried with the same key until it succeeds).
+- payment-service logs `Charge for attempt … unresolved (PROVIDER_TIMEOUT)` for each timeout. Many in a row usually mean the sandbox is down or a fault is switched on. Reset it from inside the network (payment-service's container has the key): `C --profile apps exec payment-service sh -c 'curl -s -X POST -H "Authorization: Bearer $SANDBOX_API_KEY" -H "Content-Type: application/json" -d "{\"mode\":\"NONE\"}" http://payment-sandbox:8099/sandbox/faults'`.
+- Test tokens: `tok_success`, `tok_decline`, `tok_insufficient`, `tok_timeout` (charges, then answers too late), `tok_unknown` (fails without charging).
 
 ## Consumer lag growing
 

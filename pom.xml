@@ -30,6 +30,8 @@
     <module>services/api-gateway</module>
     <module>services/inventory-service</module>
     <module>services/order-service</module>
+    <module>services/payment-sandbox</module>
+    <module>services/payment-service</module>
   </modules>
 
   <properties>

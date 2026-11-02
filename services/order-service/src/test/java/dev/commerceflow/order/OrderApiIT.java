@@ -200,6 +200,20 @@ class OrderApiIT {
     assertThat(ordersWithKey(key)).isZero();
   }
 
+  /** Catalog allows free products, but nothing can be charged for an order of them alone. */
+  @Test
+  void anOrderTotallingZeroIsRefused() throws Exception {
+    UUID free = CATALOG.add("Sticker", 0);
+    String key = key();
+    mvc.perform(place(TestTokens.customer(), key, lines(free, 3)))
+        .andExpect(status().isUnprocessableContent())
+        .andExpect(jsonPath("$.type").value("/problems/zero-total"));
+    assertThat(ordersWithKey(key)).isZero();
+    // With something to pay for alongside, a free item is fine.
+    mvc.perform(place(TestTokens.customer(), key(), lines(free, 1, CATALOG.add("Pen", 150), 1)))
+        .andExpect(status().isAccepted());
+  }
+
   @Test
   void invalidRequestsAreRejected() throws Exception {
     UUID lamp = CATALOG.add("Lamp", 100);

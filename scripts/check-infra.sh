@@ -271,7 +271,7 @@ fi
 # --- Services end to end through the gateway (only when the apps profile is running) -----------
 if container_running api-gateway; then
   echo "-- services"
-  for svc in identity-service catalog-service order-service inventory-service api-gateway; do
+  for svc in identity-service catalog-service order-service inventory-service payment-sandbox payment-service api-gateway; do
     check "$svc is healthy" container_healthy "$svc"
   done
 
@@ -345,29 +345,63 @@ if container_running api-gateway; then
   [[ "$(tail -n 1 <<< "$replay")" == 200 && -n "$order_id" && "$replay_id" == "$order_id" ]] &&
     pass "retrying with the same Idempotency-Key returns the same order" || fail "replay returned: $replay"
 
-  # Milestone 5: OrderCreated goes through the outbox and Kafka to inventory, whose answer comes
-  # back the same way and moves the order on.
+  # Milestones 5 and 6: the checkout saga, over the outbox and Kafka. Inventory reserves, payment
+  # charges the sandbox, inventory commits, and the order is confirmed.
   order_status() {
     curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$1" | sed -n 's/.*"status":"\([A-Z_]*\)".*/\1/p'
   }
-  reserved() { [[ "$(order_status "$order_id")" == PAYMENT_PROCESSING ]]; }
-  if eventually 30 reserved; then pass "inventory reserved the stock via Kafka and the order moved to PAYMENT_PROCESSING"
-  else fail "order $order_id is $(order_status "$order_id"), expected PAYMENT_PROCESSING"; fi
-  curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q '"available":3' &&
-    pass "the reservation took 2 of the 5 units" || fail "availability after reservation is wrong"
+  order_is() { [[ "$(order_status "$1")" == "$2" ]]; }
+  available() { curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q "\"available\":$1"; }
+  payments_for() { curl -s --max-time 10 -H "Authorization: Bearer $admin" "$gw/api/v1/admin/payments?orderId=$1"; }
+  # Places an order for this product and prints its id.
+  order_with() {
+    curl -s --max-time 10 -H "Authorization: Bearer $customer" -H "Idempotency-Key: check-infra-$(random_secret | head -c 20)" \
+      -H 'Content-Type: application/json' \
+      -d "{\"items\":[{\"productId\":\"$product_id\",\"quantity\":$2}],\"paymentToken\":\"$1\"}" \
+      "$gw/api/v1/orders" | json_field id
+  }
 
-  big_key="check-infra-$(random_secret | head -c 20)"
-  too_many=$(curl -s --max-time 10 -H "Authorization: Bearer $customer" -H "Idempotency-Key: $big_key" \
-    -H 'Content-Type: application/json' \
-    -d "{\"items\":[{\"productId\":\"$product_id\",\"quantity\":50}],\"paymentToken\":\"tok_success\"}" \
-    "$gw/api/v1/orders" | json_field id)
+  if eventually 60 order_is "$order_id" CONFIRMED; then pass "the saga reserved, charged and committed: the order is CONFIRMED"
+  else fail "order $order_id is $(order_status "$order_id"), expected CONFIRMED"; fi
+  available 3 && pass "the confirmed order holds 2 of the 5 units" || fail "availability after confirmation is wrong"
+  paid=$(payments_for "$order_id")
+  # INV-3: one attempt for the order, and it succeeded.
+  [[ $(grep -o '"status"' <<< "$paid" | wc -l) -eq 1 && "$paid" == *'"status":"SUCCEEDED"'* && "$paid" == *'"amountMinor":3998'* ]] &&
+    pass "payment-service holds exactly one successful charge for it" || fail "payment attempts for $order_id: $paid"
+
+  declined=$(order_with tok_decline 1)
+  declined_failed() {
+    curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$declined" | grep -q '"failureReason":"PAYMENT_DECLINED"'
+  }
+  if [[ -n "$declined" ]] && eventually 60 declined_failed; then pass "a declined card fails the order as PAYMENT_DECLINED"
+  else fail "the declined order ($declined) is $(order_status "$declined")"; fi
+  # INV-5: the failed order holds no stock and no money.
+  available 3 && pass "its reserved unit was released again" || fail "a declined order kept its stock"
+  [[ "$(payments_for "$declined")" == *'"status":"FAILED"'* ]] &&
+    pass "its payment attempt is FAILED, with nothing charged" || fail "declined payment: $(payments_for "$declined")"
+
+  too_many=$(order_with tok_success 50)
   out_of_stock() {
     curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$too_many" | grep -q '"failureReason":"OUT_OF_STOCK"'
   }
   if [[ -n "$too_many" ]] && eventually 30 out_of_stock; then pass "an order for more than is in stock fails as OUT_OF_STOCK"
   else fail "the oversized order ($too_many) did not fail as OUT_OF_STOCK"; fi
-  curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q '"available":3' &&
-    pass "the rejected order took no stock" || fail "a rejected order changed availability"
+  available 3 && pass "the rejected order took no stock" || fail "a rejected order changed availability"
+  [[ "$(payments_for "$too_many")" == *'"items":[]'* ]] &&
+    pass "and payment was never asked to charge for it" || fail "payment attempts for a rejected order: $(payments_for "$too_many")"
+
+  # A charge whose answer never arrives is UNKNOWN, not declined: the stock stays held for it.
+  timed_out=$(order_with tok_timeout 1)
+  unknown() { [[ "$(payments_for "$timed_out")" == *'"status":"UNKNOWN"'* ]]; }
+  if [[ -n "$timed_out" ]] && eventually 60 unknown; then pass "a provider timeout leaves the payment UNKNOWN"
+  else fail "the timed-out order's payment: $(payments_for "$timed_out")"; fi
+  order_is "$timed_out" PAYMENT_PROCESSING && available 2 &&
+    pass "and the order waits for reconciliation instead of failing (stock still held)" ||
+    fail "the timed-out order is $(order_status "$timed_out")"
+  code=$(http_status -H "Authorization: Bearer $admin" "$gw/api/v1/admin/sagas")
+  [[ "$code" == 200 ]] && pass "an admin can list sagas" || fail "/admin/sagas returned $code"
+  code=$(http_status -H "Authorization: Bearer $customer" "$gw/api/v1/admin/payments")
+  [[ "$code" == 403 ]] && pass "a customer cannot see payments" || fail "customer on /admin/payments got $code"
   other_email="check-infra-$(random_secret | head -c 10)@example.com"
   http_status -H 'Content-Type: application/json' \
     -d "{\"email\":\"$other_email\",\"password\":\"$password\",\"displayName\":\"Other\"}" "$gw/api/v1/auth/register" > /dev/null
@@ -381,14 +415,14 @@ if container_running api-gateway; then
   if container_running prometheus; then
     services_up() {
       [[ $(curl -sS --get --data-urlencode 'query=sum(up{job="services"})' http://127.0.0.1:9090/api/v1/query |
-        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 5 ]]
+        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 6 ]]
     }
-    if eventually 60 services_up; then pass "prometheus scrapes all five services"; else fail "prometheus is not scraping all five services"; fi
+    if eventually 60 services_up; then pass "prometheus scrapes all six services"; else fail "prometheus is not scraping all six services"; fi
     outbox_metrics() {
       [[ $(curl -sS --get --data-urlencode 'query=count(outbox_pending)' http://127.0.0.1:9090/api/v1/query |
-        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 2 ]]
+        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 3 ]]
     }
-    if eventually 60 outbox_metrics; then pass "both publishing services report their outbox backlog"; else fail "outbox_pending is missing for order or inventory"; fi
+    if eventually 60 outbox_metrics; then pass "all three publishing services report their outbox backlog"; else fail "outbox_pending is missing for order, inventory or payment"; fi
     check "the outbox, dead-letter and consumer-lag alert rules are loaded" bash -c \
       "curl -sS http://127.0.0.1:9090/api/v1/rules | grep -q OutboxBacklogStuck && curl -sS http://127.0.0.1:9090/api/v1/rules | grep -q DeadLetterMessages"
   fi

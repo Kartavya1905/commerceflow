@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Moves an order from one status to the next, only if it is still in the expected one. A late,
  * duplicated or out-of-order event therefore changes nothing instead of moving an order backwards.
- * Milestone 6 puts the saga in front of this; the guard stays.
+ * Only the saga calls this, under its row lock; the guard stays as a second line of defence.
  */
 @Component
 public class OrderStatus {

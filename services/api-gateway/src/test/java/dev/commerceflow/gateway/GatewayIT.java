@@ -42,6 +42,7 @@ class GatewayIT {
     registry.add("CATALOG_URI", BACKEND::baseUrl);
     registry.add("ORDER_URI", BACKEND::baseUrl);
     registry.add("INVENTORY_URI", BACKEND::baseUrl);
+    registry.add("PAYMENT_URI", BACKEND::baseUrl);
     registry.add(
         "commerceflow.gateway.jwk-set-uri", () -> BACKEND.baseUrl() + "/.well-known/jwks.json");
     registry.add("MANAGEMENT_PORT", () -> "0");
@@ -169,6 +170,36 @@ class GatewayIT {
     assertThat(BACKEND.sawPath("/api/v1/orders")).isTrue();
     assertThat(BACKEND.sawPath("/api/v1/cart")).isTrue();
     assertThat(BACKEND.sawPath("/api/v1/admin/inventory/x")).isFalse();
+  }
+
+  /** Milestone 6: payment attempts are visible to admins only, and nothing else of payment is. */
+  @Test
+  void paymentAdminRouteIsAdminOnly() {
+    client.get().uri("/api/v1/admin/payments").exchange().expectStatus().isUnauthorized();
+    client
+        .get()
+        .uri("/api/v1/admin/payments")
+        .header("Authorization", "Bearer " + BACKEND.token("CUSTOMER"))
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+    assertThat(BACKEND.sawPath("/api/v1/admin/payments")).isFalse();
+    client
+        .get()
+        .uri("/api/v1/admin/payments")
+        .header("Authorization", "Bearer " + BACKEND.token("ADMIN"))
+        .exchange()
+        .expectStatus()
+        .isOk();
+    assertThat(BACKEND.sawPath("/api/v1/admin/payments")).isTrue();
+    // A path payment-service does not route through the gateway is simply not there.
+    client
+        .post()
+        .uri("/api/v1/payments")
+        .header("Authorization", "Bearer " + BACKEND.token("ADMIN"))
+        .exchange()
+        .expectStatus()
+        .isNotFound();
   }
 
   /** Container health checks and Prometheus use the management port without a token. */

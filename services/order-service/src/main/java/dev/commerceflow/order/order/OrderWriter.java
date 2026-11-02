@@ -2,6 +2,7 @@ package dev.commerceflow.order.order;
 
 import dev.commerceflow.messaging.OutboxWriter;
 import dev.commerceflow.order.pricing.CatalogClient.Price;
+import dev.commerceflow.order.saga.SagaOrchestrator;
 import dev.commerceflow.web.audit.AuditWriter;
 import dev.commerceflow.web.audit.AuditWriter.Outcome;
 import java.time.Clock;
@@ -25,12 +26,15 @@ class OrderWriter {
   private final JdbcClient jdbc;
   private final AuditWriter audit;
   private final OutboxWriter outbox;
+  private final SagaOrchestrator saga;
   private final Clock clock;
 
-  OrderWriter(JdbcClient jdbc, AuditWriter audit, OutboxWriter outbox, Clock clock) {
+  OrderWriter(
+      JdbcClient jdbc, AuditWriter audit, OutboxWriter outbox, SagaOrchestrator saga, Clock clock) {
     this.jdbc = jdbc;
     this.audit = audit;
     this.outbox = outbox;
+    this.saga = saga;
     this.clock = clock;
   }
 
@@ -108,7 +112,8 @@ class OrderWriter {
         orderId.toString(),
         Outcome.SUCCESS,
         Map.of("totalMinor", totalMinor, "currency", currency, "lines", order.lines().size()));
-    // Same transaction as the order: OrderCreated exists if and only if the order does.
+    // Same transaction as the order: the saga and OrderCreated exist if and only if it does.
+    saga.start(orderId);
     outbox.append(
         "OrderCreated",
         "Order",

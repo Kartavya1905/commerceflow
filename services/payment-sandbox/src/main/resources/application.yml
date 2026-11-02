@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: payment-sandbox
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${SANDBOX_DB_URL:jdbc:postgresql://localhost:5432/sandbox_db}
+    username: ${SANDBOX_DB_USER:sandbox_svc}
+    password: ${SANDBOX_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 3000
+
+server:
+  port: ${PORT:8099}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+sandbox:
+  # Like a provider's secret key. Not a real credential: generated per environment into .env.
+  api-key: ${SANDBOX_API_KEY:}
+  # How long tok_timeout and the CHARGE_THEN_STALL fault hold the response after charging:
+  # longer than payment-service's read timeout, so the caller gives up while the charge exists.
+  stall: 5s

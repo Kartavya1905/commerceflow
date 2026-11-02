@@ -63,6 +63,13 @@ spring:
                 - Path=/api/v1/inventory/**,/api/v1/admin/inventory/**
               filters:
                 - *general-rate-limit
+            # Admin views only: payments themselves are driven by Kafka, never by an HTTP call.
+            - id: payment
+              uri: ${PAYMENT_URI:http://localhost:8085}
+              predicates:
+                - Path=/api/v1/admin/payments,/api/v1/admin/payments/**
+              filters:
+                - *general-rate-limit
 
 server:
   port: ${PORT:8080}

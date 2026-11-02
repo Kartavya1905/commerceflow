@@ -66,6 +66,14 @@ public class OrderService {
           "All products in one order must be priced in the same currency.");
     }
     long total = total(order, prices);
+    if (total == 0) {
+      // Catalog allows free products, but a charge (and so the checkout saga) needs an amount.
+      throw new ApiException(
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "zero-total",
+          "Nothing to pay",
+          "An order must have a total above zero.");
+    }
 
     Optional<UUID> created =
         writer.insertPending(customerId, idempotencyKey, order, prices, currencies.get(0), total);

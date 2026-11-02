@@ -89,8 +89,8 @@ Found during this milestone:
 - [x] Tests: messaging 10 (rollback, contract, order, redelivery, retry, DLT, poison once, outage, leader lock), inventory 43, order 23
 - [x] `check-infra`: 131 checks, including an order reserved via Kafka (PAYMENT_PROCESSING) and an oversized one failing as OUT_OF_STOCK
 - [x] Mutation checks: 7 of 7 caught
-- [ ] CI green on GitHub
-- [ ] Tag `m5-done`
+- [x] CI green on GitHub (run 41414057200, first attempt)
+- [x] Tag `m5-done` (on 124ad45)
 
 Found during this milestone:
 - The outbox backlog gauge froze during a Kafka outage, because the blocked publisher was the only thing refreshing it; an alert on it would never have fired. Now refreshed on its own thread.
@@ -99,7 +99,27 @@ Found during this milestone:
 
 Not done yet, deliberately: catalog `ProductCreated`/`ProductUpdated` and identity `UserRegistered` are still not published (their consumers arrive with notification-service); `traceparent` across Kafka waits for tracing in Milestone 9.
 
-## Milestones 6–12
+## Milestone 6 — Saga orchestration and payment sandbox
+
+- [x] payment-sandbox: its own database; charges and full refunds, idempotent by key (including concurrent requests); outcome tokens `tok_success`, `tok_decline`, `tok_insufficient`, `tok_timeout` (charges, then answers too late), `tok_unknown` (fails without charging); fault modes `FAIL_ALL` and `CHARGE_THEN_STALL`; API key required
+- [x] payment-service: one attempt per order; write-ahead TX1, provider call with no transaction open (enforced), TX2; timeout or error means UNKNOWN plus `PaymentPendingReconciliation`, never FAILED; CancelPayment is void-or-refund with a tombstone; a charge that lands after its cancel is refunded; circuit breaker; admin read API (ADR-0011)
+- [x] order-service saga: explicit transition table, one transaction per transition with the saga row locked, invalid-for-state events counted and acknowledged, `OrderConfirmed` / `OrderFailed`, admin saga list, zero-total orders refused
+- [x] Gateway route for admin payments; Compose, Prometheus and dev-up wired for both new services
+- [x] Tests: saga table 108 (state, event) pairs plus graph properties (no FAILED holding money, no COMPLETED without it, every FAILED has a reason); order-service integration 32 (happy path, decline, insufficient funds, commit failure → refund → release, unknown payment held, late events acknowledged, a failed transition leaves nothing behind); payment-service 15 against the real sandbox process (one charge under duplicates, CancelPayment before AuthorizePayment charges nothing, timeout is UNKNOWN, crash after the charge heals without a second one, late charge refunded, open circuit skips the provider); sandbox 11. 448 in the build
+- [x] `check-infra`: 142 checks, now through the whole checkout. `tok_success` ends CONFIRMED with exactly one charge, `tok_decline` ends PAYMENT_DECLINED with its stock released and nothing charged, and `tok_timeout` is held as UNKNOWN with its stock kept. Cross-checked in the databases: no idempotency key charged twice, every CONFIRMED order has its charge, no FAILED order holds money
+- [x] Mutation checks: 8 of 8 caught (after fixing the two tests below)
+- [ ] CI green on GitHub
+- [ ] Tag `m6-done`
+
+Found during this milestone:
+- A late AuthorizePayment that ignored the cancellation tombstone charged nothing, but crashed into the dead-letter topic, leaving the saga without an answer. The test only checked that the answers it got were CANCELLED, not that both arrived, so the mutation survived. It now requires both, and two other tests got the same fix.
+- The "invalid events are acknowledged, not thrown" test watched the dead-letter topic for 2 s, shorter than the retries take to get there, and its counter check passed because the counter ticks on every retry. It now checks that each event's dedupe record was committed, which only an acknowledged event gets.
+- Catalog allows free products, but a zero total cannot be charged or confirmed under the event contracts. Such orders are now refused at placement (422 `zero-total`).
+- The four orders left PENDING or PAYMENT_PROCESSING by earlier milestones' runs were given saga rows by the migration, with deadlines already due, for the Milestone 7 sweeper.
+
+Not done yet, deliberately: the deadline sweeper (re-sends, then compensation) and the payment reconciler are Milestone 7. Until then, an order whose payment is UNKNOWN stays PAYMENT_PROCESSING with its stock held, and a lost answer is not re-requested.
+
+## Milestones 7–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

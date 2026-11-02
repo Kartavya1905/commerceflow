@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 5 of 12.** Identity, catalog, gateway, inventory and order services run locally and talk through Kafka with a transactional outbox: placing an order reserves stock asynchronously and moves the order to PAYMENT_PROCESSING, or fails it as OUT_OF_STOCK, with duplicates, retries, dead-letter topics and Kafka outages handled. Payment and the saga arrive in Milestone 6. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 6 of 12.** The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. A payment whose outcome is unknown is held, never failed. Automatic recovery of stuck steps (deadline sweeper, payment reconciler) arrives in Milestone 7. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 

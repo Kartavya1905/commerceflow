@@ -276,7 +276,7 @@ stateDiagram-v2
     AWAITING_RECONCILIATION --> AWAITING_COMMIT: PaymentSucceeded
     AWAITING_RECONCILIATION --> RELEASING_INVENTORY: PaymentFailed
 
-    CANCELLING_PAYMENT --> RELEASING_INVENTORY: PaymentFailed(CANCELLED) or PaymentRefunded
+    CANCELLING_PAYMENT --> RELEASING_INVENTORY: PaymentFailed (any reason) or PaymentRefunded
 
     AWAITING_COMMIT --> COMPLETED: InventoryCommitted
     AWAITING_COMMIT --> REFUNDING_PAYMENT: InventoryCommitFailed / send CancelPayment
@@ -297,6 +297,7 @@ Rules the implementation must follow:
 4. **Fail-safe compensation.** When the outcome of a step is unknown after the last attempt, the saga issues the compensating command anyway (`ReleaseInventory`, `CancelPayment`); both are no-ops if nothing happened.
 5. **`CancelPayment` leaves a tombstone.** If payment-service has no attempt for the order, it inserts one with status `CANCELLED`. A late `AuthorizePayment` then hits `UNIQUE(order_id)` and is answered with `PaymentFailed(CANCELLED)` instead of charging. This closes the race between "saga gave up" and "command finally arrived".
 6. **Reservations are not expired by inventory while a saga can still use them.** Inventory has only a long-stop expiry (default 24 h) that raises an alert; normal release is always driven by the saga. This avoids "payment succeeded but the stock was already released".
+7. **The customer sees `FAILED` only once compensation has finished.** While stock is being released or a charge refunded, the order stays `PAYMENT_PROCESSING`. The table itself is `SagaTransitions` in order-service; ADR-0011 records how it and payment-service are built.
 
 ### E.3 Happy path
 

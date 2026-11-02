@@ -2,7 +2,7 @@
 #
 # Start it with scripts/dev-up.sh (or scripts/dev-up.ps1), which creates .env, checks ports and
 # waits for health. Services without a profile are the core stack and always start;
-# `--profile obs` adds observability; `--profile apps` will add the services from Milestone 3.
+# `--profile obs` adds observability; `--profile apps` adds the services.
 #
 # Every published port binds to 127.0.0.1 only, so nothing is reachable from your network.
 # Image tags are pinned; bump them deliberately and record why in the PR.
@@ -282,6 +282,57 @@ services:
     healthcheck: *service-health
     mem_limit: 768m
 
+  # The card provider stand-in, with its own database: what it charged survives anything
+  # payment-service does, as with a real provider. Reachable only inside the network.
+  payment-sandbox:
+    <<: *restart
+    profiles: [apps]
+    build:
+      <<: *service-build
+      args:
+        SERVICE: payment-sandbox
+    image: commerceflow/payment-sandbox:local
+    environment:
+      PORT: 8099
+      SANDBOX_DB_URL: jdbc:postgresql://postgres:5432/sandbox_db
+      SANDBOX_DB_PASSWORD: ${SANDBOX_DB_PASSWORD:?set in .env}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:?set in .env}
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    healthcheck: *service-health
+    mem_limit: 512m
+
+  payment-service:
+    <<: *restart
+    profiles: [apps]
+    build:
+      <<: *service-build
+      args:
+        SERVICE: payment-service
+    image: commerceflow/payment-service:local
+    environment:
+      PORT: 8085
+      PAYMENT_DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?set in .env}
+      KAFKA_BOOTSTRAP: kafka:29092
+      PAYMENT_PROVIDER_URI: http://payment-sandbox:8099
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:?set in .env}
+      JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    ports:
+      - "127.0.0.1:8085:8085"
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      payment-sandbox:
+        condition: service_healthy
+    healthcheck: *service-health
+    mem_limit: 768m
+
   api-gateway:
     <<: *restart
     profiles: [apps]
@@ -295,6 +346,7 @@ services:
       CATALOG_URI: http://catalog-service:8082
       ORDER_URI: http://order-service:8083
       INVENTORY_URI: http://inventory-service:8084
+      PAYMENT_URI: http://payment-service:8085
       JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
@@ -310,6 +362,8 @@ services:
       order-service:
         condition: service_healthy
       inventory-service:
+        condition: service_healthy
+      payment-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8090/actuator/health/readiness > /dev/null"]

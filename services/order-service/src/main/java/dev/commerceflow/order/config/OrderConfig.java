@@ -33,7 +33,9 @@ public class OrderConfig {
       int breakerWindow,
       int breakerMinimumCalls,
       float breakerFailureRate,
-      Duration breakerOpenFor) {}
+      Duration breakerOpenFor,
+      Duration sagaStepTimeout,
+      Duration sagaReconciliationTimeout) {}
 
   /** Everything here needs a signed-in user; admin views need the ADMIN role as well. */
   @Bean
