@@ -1,0 +1,31 @@
+# Infrastructure alerts. Business alerts (outbox age, stuck sagas, reconciliation backlog, DLT
+# messages) are added with the features that emit their metrics, in Milestones 5-9.
+groups:
+  - name: infrastructure
+    rules:
+      - alert: ScrapeTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} has not answered a scrape for 1 minute"
+          runbook: docs/runbooks/infra.md#scrape-target-down
+
+      - alert: KafkaBrokerUnreachable
+        expr: kafka_brokers < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "kafka-exporter sees no Kafka broker"
+          runbook: docs/runbooks/infra.md#kafka-broker-unreachable
+
+      - alert: KafkaTopicMissing
+        expr: absent(kafka_topic_partitions{topic="order.events.v1"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "order.events.v1 does not exist; kafka-init may have failed"
+          runbook: docs/runbooks/infra.md#kafka-topic-missing

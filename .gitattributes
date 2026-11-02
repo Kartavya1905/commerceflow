@@ -1,10 +1,7 @@
-* text=auto
-
-# Scripts run inside Linux containers and CI: always LF, or they fail with "bad interpreter".
-*.sh text eol=lf
-mvnw text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
+# LF in the repository and in every working copy, even where Git is configured with
+# core.autocrlf=true (the Git for Windows default). Spotless checks for LF, and shell scripts run
+# in Linux containers fail with "bad interpreter" if they arrive with CRLF.
+* text=auto eol=lf
 
 # Windows scripts keep CRLF.
 *.cmd text eol=crlf

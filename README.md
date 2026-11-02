@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 1 of 12.** Architecture, contracts and build skeleton are done; services arrive from Milestone 3. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 2 of 12.** Architecture, contracts, and the local infrastructure (Postgres, Kafka, Redis, Mailpit, OpenTelemetry, Prometheus, Tempo, Loki, Grafana) are done; services arrive from Milestone 3. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
@@ -17,15 +17,18 @@ A distributed, event-driven commerce platform built to show how checkout stays c
 
 Seven Spring Boot services plus a payment-provider simulator, communicating over REST and Apache Kafka, each with its own PostgreSQL database. See [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for diagrams, the order lifecycle, event definitions, schemas and invariants, and [docs/adr](docs/adr) for the reasoning behind each decision.
 
-## Build
+## Run it locally
 
-Requires Java 21 and Docker. Maven is downloaded by the wrapper.
+Requires Java 21, Docker, and (on Windows) Git for Windows. Maven is downloaded by the wrapper.
 
 ```bash
-./mvnw verify
+scripts/dev-up.sh --obs      # infrastructure + observability; creates .env on first run
+scripts/check-infra.sh       # verifies every component end to end
+./mvnw verify                # build and contract tests
+scripts/dev-down.sh          # stop (add --volumes to delete local data)
 ```
 
-On Windows PowerShell use `.\mvnw.cmd verify`.
+On Windows PowerShell use `.\scripts\dev-up.ps1 --obs`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. Grafana is at http://localhost:3000 and Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
 
 ## Project plan
 

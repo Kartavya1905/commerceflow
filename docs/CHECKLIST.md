@@ -22,13 +22,19 @@ Tick an item only when its tests pass on a clean clone. Each milestone ends with
 
 ## Milestone 2 — Local infrastructure with Docker Compose
 
-- [ ] Compose file with `core`, `apps`, `obs` profiles and pinned image tags
-- [ ] Postgres init: seven databases, seven roles, `CONNECT` revoked from `PUBLIC`
-- [ ] Kafka KRaft with internal and external listeners; topics created from `topics.json`
-- [ ] Redis with password; Mailpit
-- [ ] OTel Collector, Prometheus, Tempo, Loki, Grafana with provisioned data sources
-- [ ] `scripts/dev-up` and `scripts/dev-down` (bash + PowerShell)
-- [ ] Infra smoke test, including cross-database access refused
+- [x] Compose file: core (no profile) + `obs` profile, pinned image tags, all ports on 127.0.0.1
+- [x] Postgres init: seven databases, seven least-privilege roles, `CONNECT` revoked from `PUBLIC`; idempotent, re-applies passwords every start
+- [x] SCRAM passwords required on every TCP connection, loopback included
+- [x] Kafka 4.3.2 KRaft with internal (`kafka:29092`) and external (`localhost:9092`) listeners; auto-create off
+- [x] kafka-init reconciles 14 topics (7 + DLTs) from `topics.json`; refuses partition changes, repairs retention
+- [x] Redis 8 with password (not on the command line), AOF, `volatile-lru`; Mailpit
+- [x] OTel Collector → Tempo / Loki / Prometheus; Grafana with provisioned data sources and infrastructure dashboard; infra alert rules
+- [x] `scripts/dev-up`, `dev-down`, `check-infra` (bash + PowerShell wrappers); `.env` generated with random secrets
+- [x] `check-infra`: 103 checks pass on fresh volumes and after a restart with kept data
+- [x] Gate tests: password rotation, partition-change refusal, retention repair, port-conflict detection, ShellCheck clean, LF endings
+- [x] Runbook `docs/runbooks/infra.md`; CI jobs `shell-lint` and `infra`
+- [ ] CI green on GitHub (needs the first push)
+- [ ] Tag `m2-done`
 
 ## Milestones 3–12
 

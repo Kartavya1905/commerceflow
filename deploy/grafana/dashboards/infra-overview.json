@@ -1,0 +1,167 @@
+{
+  "uid": "cf-infra-overview",
+  "title": "CommerceFlow / Infrastructure overview",
+  "description": "Is the local platform healthy? Scrape targets, Kafka topics and lag, dead-letter backlog, and telemetry intake. Business dashboards arrive with Milestones 5-9.",
+  "tags": ["commerceflow", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape targets",
+      "description": "1 = answering scrapes. Shown as UP / DOWN text so status never depends on color alone.",
+      "gridPos": { "x": 0, "y": 0, "w": 16, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max by (job) (up)", "legendFormat": "{{job}}", "instant": true }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "vertical"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "#d03b3b", "index": 0 }, "1": { "text": "UP", "color": "#0ca30c", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "#d03b3b", "value": null }, { "color": "#0ca30c", "value": 1 } ] },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Dead-letter messages",
+      "description": "Messages ever written to any *.dlt topic. Anything above 0 needs a look: see the DLT replay runbook.",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(kafka_topic_partition_current_offset{topic=~\".*\\\\.dlt\"}) or vector(0)", "instant": true }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [ { "type": "value", "options": { "0": { "text": "0 (clear)", "index": 0 } } } ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null }, { "color": "#d03b3b", "value": 1 } ] },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Messages produced per topic (msg/s)",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset{topic=~\"[a-z]+\\\\.(events|commands)\\\\.v[0-9]+\"}[2m]))", "legendFormat": "{{topic}}" }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "#3987e5" },
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "axisSoftMin": 0 }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "order.events.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } } ] },
+          { "matcher": { "id": "byName", "options": "inventory.commands.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } } ] },
+          { "matcher": { "id": "byName", "options": "inventory.events.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#199e70" } } ] },
+          { "matcher": { "id": "byName", "options": "payment.commands.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#c98500" } } ] },
+          { "matcher": { "id": "byName", "options": "payment.events.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d55181" } } ] },
+          { "matcher": { "id": "byName", "options": "catalog.events.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#008300" } } ] },
+          { "matcher": { "id": "byName", "options": "identity.events.v1" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#9085e9" } } ] }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Consumer group lag (messages)",
+      "description": "Messages a consumer group has not yet processed, per group and topic. Empty until services consume in Milestone 5.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag)", "legendFormat": "{{consumergroup}} / {{topic}}" }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Topics and partition counts",
+      "description": "Should match contracts/src/main/resources/events/topics.json. kafka-init refuses to change partition counts automatically.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max by (topic) (kafka_topic_partitions{topic!~\"__.*\"})", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "topic": "Topic", "Value": "Partitions" } } },
+        { "id": "sortBy", "options": { "sort": [ { "field": "Topic" } ] } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Telemetry accepted by the collector (items/s)",
+      "description": "Spans and log records the OpenTelemetry Collector received. A drop to zero while services run means telemetry is not arriving.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate({__name__=~\"otelcol_receiver_accepted_spans(_total)?\"}[2m])) or vector(0)", "legendFormat": "spans" },
+        { "refId": "B", "expr": "sum(rate({__name__=~\"otelcol_receiver_accepted_log_records(_total)?\"}[2m])) or vector(0)", "legendFormat": "log records" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "spans" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } } ] },
+          { "matcher": { "id": "byName", "options": "log records" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } } ] }
+        ]
+      }
+    }
+  ]
+}

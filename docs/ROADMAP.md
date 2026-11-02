@@ -59,7 +59,7 @@ Do not start milestone N+1 while milestone N has a failing test.
 |---|---|
 | **Goal** | `scripts/dev-up` starts Postgres (seven databases, seven roles), Kafka (KRaft), Redis, Mailpit, and the observability stack; topics are created from `topics.json` |
 | **Prerequisites** | M1 |
-| **Decisions** | Exact image tags pinned (no `latest`); Compose profiles `core`, `apps`, `obs`; one Postgres server with per-service DBs |
+| **Decisions** | Exact image tags pinned (no `latest`); core services have no profile and always start, `obs` and `apps` are profiles (a profile-only core broke `depends_on` across profiles); one Postgres server with per-service DBs; init jobs run on every start and are idempotent; all ports bound to 127.0.0.1 |
 | **Steps** | 1. `deploy/compose/docker-compose.yml` with health checks. 2. `init/01-databases.sh` creating DBs and roles from env vars, revoking `CONNECT` from `PUBLIC`. 3. Kafka topic-init container reading `topics.json`. 4. OTel Collector, Prometheus, Tempo, Loki, Grafana with provisioned data sources. 5. `scripts/dev-up` / `dev-down` (bash and PowerShell) |
 | **Commands** | `./scripts/dev-up core obs`, `docker compose ps`, `./scripts/check-infra` |
 | **Tests** | `InfraSmokeIT` (Testcontainers Compose module, or a script): each role can connect to its own DB and is **refused** on every other DB; all topics exist with the right partition count; Redis `PING`; Grafana data sources healthy |

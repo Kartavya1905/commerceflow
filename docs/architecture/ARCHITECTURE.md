@@ -777,7 +777,7 @@ Test hardware for local runs (recorded 2026-11-01): Windows 11, 10 logical CPUs,
 
 Everything in Milestones 1–10 runs on the developer machine or on free GitHub Actions minutes for a public repository:
 
-- Docker Compose with profiles: `core` (Postgres, Kafka, Redis, Mailpit), `apps` (all services), `obs` (observability). Running `core` + `apps` + `obs` together needs roughly 8–10 GB of RAM; JVMs are capped with `-XX:MaxRAMPercentage` and container memory limits.
+- Docker Compose: the core stack (Postgres, Kafka, Redis, Mailpit) always starts; profile `obs` adds observability and profile `apps` adds the services. Core + obs measured about 1 GB of RAM at idle on 2026-11-01 (`docker stats`; container limits sum to 5.1 GB). With `apps` the estimate is 8–10 GB, to be measured in Milestone 3, with JVMs capped by `-XX:MaxRAMPercentage` and container memory limits.
 - No paid APIs: the payment provider is the self-hosted sandbox; email goes to Mailpit.
 - Images are published to GitHub Container Registry, which is free for public packages.
 - The "approved environment" for CI deployment is an ephemeral kind cluster inside the GitHub Actions runner, protected by a GitHub Environment with a required reviewer. Smoke tests and rollback are demonstrated there at no cost.

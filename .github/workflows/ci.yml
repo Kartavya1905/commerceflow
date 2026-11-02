@@ -36,3 +36,40 @@ jobs:
           name: surefire-reports
           path: '**/target/surefire-reports/'
           retention-days: 7
+
+  shell-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: ShellCheck
+        run: >-
+          shellcheck -x -S warning
+          scripts/*.sh scripts/lib/*.sh
+          deploy/compose/kafka-init/create-topics.sh
+          deploy/compose/postgres/create-service-databases.sh
+
+  # Brings up the whole local stack on the runner and runs every infrastructure check.
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: shell-lint
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate compose file
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env.example --profile obs config -q
+
+      - name: Start core and observability stack
+        run: bash scripts/dev-up.sh --obs
+
+      - name: Check infrastructure
+        run: bash scripts/check-infra.sh
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env --profile obs logs --no-color --tail 100
+
+      - name: Tear down
+        if: always()
+        run: bash scripts/dev-down.sh --volumes --yes
