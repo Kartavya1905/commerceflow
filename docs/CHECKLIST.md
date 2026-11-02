@@ -17,8 +17,8 @@ Tick an item only when its tests pass on a clean clone. Each milestone ends with
 - [x] Spotless formatting gate (LF line endings)
 - [x] All 10 Mermaid diagrams render (checked with mermaid-cli)
 - [x] CI workflow `.github/workflows/ci.yml`
-- [ ] First push to a public GitHub repository; CI green there
-- [ ] Tag `m1-done`
+- [x] Pushed to https://github.com/Kartavya1905/commerceflow; CI green (run 41379890078)
+- [x] Tag `m1-done`
 
 ## Milestone 2 — Local infrastructure with Docker Compose
 
@@ -33,8 +33,8 @@ Tick an item only when its tests pass on a clean clone. Each milestone ends with
 - [x] `check-infra`: 103 checks pass on fresh volumes and after a restart with kept data
 - [x] Gate tests: password rotation, partition-change refusal, retention repair, port-conflict detection, ShellCheck clean, LF endings
 - [x] Runbook `docs/runbooks/infra.md`; CI jobs `shell-lint` and `infra`
-- [ ] CI green on GitHub (needs the first push)
-- [ ] Tag `m2-done`
+- [x] CI green on GitHub, including the `infra` job on Linux (run 41379890078)
+- [x] Tag `m2-done`
 
 ## Milestones 3–12
 
