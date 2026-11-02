@@ -108,8 +108,8 @@ Not done yet, deliberately: catalog `ProductCreated`/`ProductUpdated` and identi
 - [x] Tests: saga table 108 (state, event) pairs plus graph properties (no FAILED holding money, no COMPLETED without it, every FAILED has a reason); order-service integration 32 (happy path, decline, insufficient funds, commit failure → refund → release, unknown payment held, late events acknowledged, a failed transition leaves nothing behind); payment-service 15 against the real sandbox process (one charge under duplicates, CancelPayment before AuthorizePayment charges nothing, timeout is UNKNOWN, crash after the charge heals without a second one, late charge refunded, open circuit skips the provider); sandbox 11. 448 in the build
 - [x] `check-infra`: 142 checks, now through the whole checkout. `tok_success` ends CONFIRMED with exactly one charge, `tok_decline` ends PAYMENT_DECLINED with its stock released and nothing charged, and `tok_timeout` is held as UNKNOWN with its stock kept. Cross-checked in the databases: no idempotency key charged twice, every CONFIRMED order has its charge, no FAILED order holds money
 - [x] Mutation checks: 8 of 8 caught (after fixing the two tests below)
-- [ ] CI green on GitHub
-- [ ] Tag `m6-done`
+- [x] CI green on GitHub (run 41486171252, first attempt)
+- [x] Tag `m6-done` (on 411ea20)
 
 Found during this milestone:
 - A late AuthorizePayment that ignored the cancellation tombstone charged nothing, but crashed into the dead-letter topic, leaving the saga without an answer. The test only checked that the answers it got were CANCELLED, not that both arrived, so the mutation survived. It now requires both, and two other tests got the same fix.
