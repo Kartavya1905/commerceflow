@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: catalog-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${CATALOG_DB_URL:jdbc:postgresql://localhost:5432/catalog_db}
+    username: ${CATALOG_DB_USER:catalog_svc}
+    password: ${CATALOG_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      # Milliseconds: Hikari binds this straight to a long.
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # The cache is an optimisation. If Redis is slow or down, give up quickly and read Postgres
+      # instead of holding the request for Lettuce's 60-second default.
+      timeout: 500ms
+      connect-timeout: 500ms
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${PORT:8082}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # A Redis outage degrades caching but must not mark the service unready.
+    redis:
+      enabled: false
+
+commerceflow:
+  catalog:
+    jwk-set-uri: ${JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+    product-cache-ttl: 60s
+    page-cache-ttl: 30s

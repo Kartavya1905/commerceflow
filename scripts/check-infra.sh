@@ -268,6 +268,67 @@ else
   echo "-- observability: skipped (start with scripts/dev-up.sh --obs to include it)"
 fi
 
+# --- Services end to end through the gateway (only when the apps profile is running) -----------
+if container_running api-gateway; then
+  echo "-- services"
+  for svc in identity-service catalog-service api-gateway; do
+    check "$svc is healthy" container_healthy "$svc"
+  done
+
+  gw=http://127.0.0.1:8080
+  json_field() { sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p"; }
+  http_status() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@"; }
+  post_json() { curl -s --max-time 10 -H 'Content-Type: application/json' -H 'X-Token-Delivery: body' -d "$2" "$gw$1"; }
+
+  email="check-infra-$(random_secret | head -c 10)@example.com"
+  password="check-infra-$(random_secret | head -c 24)"
+  code=$(http_status -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$password\",\"displayName\":\"Infra Check\"}" "$gw/api/v1/auth/register")
+  [[ "$code" == 201 ]] && pass "a customer can register through the gateway" || fail "register returned $code"
+
+  customer=$(post_json /api/v1/auth/login "{\"email\":\"$email\",\"password\":\"$password\"}" | json_field accessToken)
+  [[ -n "$customer" ]] && pass "the customer can log in and gets an access token" || fail "customer login failed"
+  code=$(http_status -H "Authorization: Bearer $customer" "$gw/api/v1/users/me")
+  [[ "$code" == 200 ]] && pass "the token works on a protected route" || fail "/users/me returned $code"
+
+  admin=$(post_json /api/v1/auth/login \
+    "{\"email\":\"$(env_value BOOTSTRAP_ADMIN_EMAIL)\",\"password\":\"$(env_value BOOTSTRAP_ADMIN_PASSWORD)\"}" | json_field accessToken)
+  [[ -n "$admin" ]] && pass "the bootstrap admin can log in" || fail "admin login failed"
+
+  word="infracheck$(random_secret | head -c 8)"
+  sku="CHECK-$(random_secret | head -c 8 | tr '[:lower:]' '[:upper:]')"
+  created=$(curl -s --max-time 10 -H "Authorization: Bearer $admin" -H 'Content-Type: application/json' \
+    -d "{\"sku\":\"$sku\",\"name\":\"$word lamp\",\"category\":\"infra-check\",\"priceMinor\":1999,\"currency\":\"USD\"}" \
+    "$gw/api/v1/admin/products")
+  product_id=$(json_field id <<< "$created")
+  [[ -n "$product_id" ]] && pass "an admin can create a product" || fail "product creation failed: $created"
+
+  code=$(http_status "$gw/api/v1/products/$product_id")
+  [[ "$code" == 200 ]] && pass "anyone can read the product" || fail "public product read returned $code"
+  curl -s --max-time 10 "$gw/api/v1/products?q=$word" | grep -q "$product_id" &&
+    pass "full-text search finds it" || fail "search for $word did not return the product"
+
+  code=$(http_status -X POST -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' -d '{}' "$gw/api/v1/admin/products")
+  [[ "$code" == 403 ]] && pass "a customer is refused on admin routes" || fail "customer on admin route got $code"
+  code=$(http_status "$gw/internal/v1/prices?ids=$product_id")
+  [[ "$code" == 401 ]] && pass "internal endpoints are not reachable through the gateway" || fail "/internal returned $code"
+  code=$(http_status -H "Authorization: Bearer $admin" "$gw/actuator/prometheus")
+  [[ "$code" == 404 ]] && pass "service actuators are not routed, even for an admin" || fail "/actuator/prometheus returned $code"
+
+  # Leave the shared catalogue as we found it.
+  http_status -X POST -H "Authorization: Bearer $admin" "$gw/api/v1/admin/products/$product_id/archive" > /dev/null
+
+  if container_running prometheus; then
+    services_up() {
+      [[ $(curl -sS --get --data-urlencode 'query=sum(up{job="services"})' http://127.0.0.1:9090/api/v1/query |
+        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 3 ]]
+    }
+    if eventually 60 services_up; then pass "prometheus scrapes all three services"; else fail "prometheus is not scraping all three services"; fi
+  fi
+else
+  echo "-- services: skipped (start with scripts/dev-up.sh --apps to include them)"
+fi
+
 echo
 echo "$passed passed, $failed failed"
 ((failed == 0))

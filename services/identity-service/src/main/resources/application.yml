@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: identity-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:5432/identity_db}
+    username: ${IDENTITY_DB_USER:identity_svc}
+    password: ${IDENTITY_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      # Milliseconds: Hikari binds this straight to a long, so "3s" is rejected at startup.
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${PORT:8081}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+commerceflow:
+  identity:
+    jwt-private-key-path: ${JWT_PRIVATE_KEY_PATH:./secrets/jwt-private.pem}
+    access-token-ttl: 15m
+    refresh-token-ttl: 7d
+    max-failed-logins: 5
+    lockout-duration: 15m
+    # Browsers treat http://localhost as a secure context, so Secure cookies work locally.
+    refresh-cookie-secure: true
+    bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}

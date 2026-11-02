@@ -25,7 +25,8 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # Formatting (spotless:check runs in the validate phase), compile, unit and contract tests.
+      # Formatting (spotless:check in validate), compile, unit tests (Surefire), then integration
+      # tests (Failsafe) against PostgreSQL and Redis in Testcontainers.
       - name: Build and test
         run: ./mvnw -B -ntp verify
 
@@ -57,18 +58,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate compose file
-        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env.example --profile obs config -q
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
 
-      - name: Start core and observability stack
-        run: bash scripts/dev-up.sh --obs
+      - name: Validate compose file
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env.example --profile obs --profile apps config -q
+
+      - name: Start infrastructure, observability and services
+        run: bash scripts/dev-up.sh --obs --apps
 
       - name: Check infrastructure
         run: bash scripts/check-infra.sh
 
       - name: Container logs on failure
         if: failure()
-        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env --profile obs logs --no-color --tail 100
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env --profile obs --profile apps logs --no-color --tail 100
 
       - name: Tear down
         if: always()

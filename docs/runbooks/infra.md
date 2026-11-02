@@ -17,6 +17,31 @@ docker compose -f deploy/compose/docker-compose.yml --env-file .env
 | SQL as a service role | `C run --rm --no-deps -e PGHOST=postgres -e PGPASSWORD=<from .env> --entrypoint psql postgres-init -U order_svc -d order_db` |
 | List topics | `C exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list` |
 
+## Running the services
+
+- `scripts/dev-up.sh --apps` builds the jars on your machine, builds the images, and starts identity-service (:8081), catalog-service (:8082) and api-gateway (:8080). Run it again after changing code; it rebuilds what changed.
+- Use the gateway (http://localhost:8080) for normal calls. The service ports are published on localhost only for debugging.
+- The first admin is created from `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`, only if no admin exists yet.
+- Non-browser clients get the refresh token in the response body by sending `X-Token-Delivery: body`; browsers get an HttpOnly cookie instead.
+- The JWT signing key is `secrets/jwt-private.pem`, created by `dev-up`. Deleting it and running `dev-up` again rotates it: every existing token stops working, and services pick up the new key from the JWKS by its new key id.
+- Logs are JSON in containers: `C --profile apps logs -f api-gateway`. Filter one request with its id: `... | grep <X-Correlation-Id>`.
+
+### A service is unhealthy
+
+`C --profile apps ps` shows which. `C --profile apps logs <service> | grep -m5 -iE "error|exception|failed"` usually names the cause. Common ones:
+
+| Symptom | Cause |
+|---|---|
+| `password authentication failed` | `.env` password changed but `dev-up` not re-run (postgres-init re-applies passwords) |
+| `Cannot read the JWT private key` | `secrets/jwt-private.pem` missing; run `dev-up` |
+| `Schema validation: wrong column type` | an entity and a Flyway migration disagree; fix the migration or the mapping, never turn validation off |
+| gateway 401 on every protected call | identity-service is down, so the gateway cannot fetch the JWKS |
+| 429 from the gateway | per-client rate limit; raise `GATEWAY_RATE` / `GATEWAY_AUTH_RATE` for load tests |
+
+## Config changes do not take effect
+
+Config files under `deploy/compose/` are bind-mounted, and `docker compose up` does not restart a container when only a mounted file changed. `dev-up --obs` reloads Prometheus automatically. For anything else: `C --profile obs restart <service>`.
+
 ## Port already in use
 
 `dev-up` checks ports before starting. Find the program holding the port and stop it:

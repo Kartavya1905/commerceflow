@@ -1,19 +1,31 @@
 #!/usr/bin/env bash
 # Starts the CommerceFlow local environment and waits until it is healthy.
 #
-#   scripts/dev-up.sh          core stack: Postgres, Kafka (+ topics), Redis, Mailpit
-#   scripts/dev-up.sh --obs    core + OpenTelemetry Collector, Prometheus, Tempo, Loki, Grafana
+#   scripts/dev-up.sh                core stack: Postgres, Kafka (+ topics), Redis, Mailpit
+#   scripts/dev-up.sh --obs          core + OpenTelemetry Collector, Prometheus, Tempo, Loki, Grafana
+#   scripts/dev-up.sh --apps         core + the services (builds their jars first)
+#   scripts/dev-up.sh --obs --apps   everything
 #
-# First run creates .env from .env.example with random local passwords.
+# First run creates .env from .env.example with random local passwords, and a JWT signing key in
+# the git-ignored secrets/ folder.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 profiles=()
+with_apps=false
+with_obs=false
 for arg in "$@"; do
   case "$arg" in
-    --obs) profiles+=(--profile obs) ;;
+    --obs)
+      profiles+=(--profile obs)
+      with_obs=true
+      ;;
+    --apps)
+      profiles+=(--profile apps)
+      with_apps=true
+      ;;
     -h | --help)
-      sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown option: $arg (try --help)" ;;
@@ -47,7 +59,8 @@ ensure_env_file() {
 # --- 2. Ports: fail early with a clear message instead of a cryptic bind error -----------------
 check_ports() {
   local ports=(5432 9092 6379 1025 8025)
-  [[ ${#profiles[@]} -eq 0 ]] || ports+=(4317 4318 9090 3000)
+  ! $with_obs || ports+=(4317 4318 9090 3000)
+  ! $with_apps || ports+=(8080 8081 8082)
 
   # `docker port` lists each mapping on its own line ("4317/tcp -> 127.0.0.1:4317"), unlike
   # `docker ps`, which condenses neighbours into ranges such as 4317-4318.
@@ -64,10 +77,38 @@ check_ports() {
     die "port(s) ${busy[*]} are already used by another program (see docs/runbooks/infra.md#port-already-in-use)."
 }
 
-# --- 3. Start and wait -------------------------------------------------------------------------
+# --- 3. JWT signing key: a local throwaway key, never committed ---------------------------------
+ensure_jwt_key() {
+  local key="$ROOT/secrets/jwt-private.pem"
+  [[ -s "$key" ]] && return 0
+  command -v openssl > /dev/null 2>&1 ||
+    die "openssl is needed to create the local JWT key (Git for Windows and Linux include it)"
+  mkdir -p "$ROOT/secrets"
+  info "Creating a local JWT signing key in secrets/ (git-ignored)"
+  # genpkey writes PKCS#8, the format identity-service expects.
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$key" 2> /dev/null
+  # The container runs as an unprivileged user (uid 10001) and reads this through a bind mount,
+  # so it must be readable by others. Acceptable for a local development key only; a real
+  # deployment uses a secret store (Kubernetes Secret, AWS Secrets Manager).
+  chmod 0644 "$key"
+}
+
+# --- 4. Service jars, built on the host and copied into images ---------------------------------
+build_jars() {
+  info "Building service jars (tests are run separately with ./mvnw verify)"
+  # mvnw is a bash script that hands /c/... classpath entries to the Windows java.exe, which
+  # needs Git Bash's path conversion. common.sh turns that off for docker, so undo it here.
+  (cd "$ROOT" && env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ./mvnw -B -ntp -q package \
+    -DskipTests -pl services/identity-service,services/catalog-service,services/api-gateway -am) ||
+    die "the Maven build failed; run ./mvnw package -DskipTests to see why"
+}
+
+# --- 5. Start and wait -------------------------------------------------------------------------
 require_docker
 ensure_env_file
+ensure_jwt_key
 check_ports
+! $with_apps || build_jars
 
 # `docker compose up --wait` treats a one-shot container that exits 0 as a failure, so wait here
 # instead: services with a health check must be healthy, others running, and init jobs exited 0.
@@ -102,6 +143,13 @@ info "Starting containers (first run builds kafka-init and can take a few minute
 compose "${profiles[@]}" up -d --build --remove-orphans
 wait_for_stack
 
+# Config files are bind-mounted, and `up` does not restart a container when only a mounted file
+# changed. Prometheus can reload in place, so edits to its scrape config apply on the next dev-up.
+if $with_obs; then
+  curl -fsS -X POST --max-time 5 http://127.0.0.1:9090/-/reload > /dev/null ||
+    echo "warning: could not reload Prometheus config; restart it with: docker compose restart prometheus" >&2
+fi
+
 info "Ready"
 cat << EOF
     Postgres     localhost:5432   (one database and role per service; passwords in .env)
@@ -109,11 +157,17 @@ cat << EOF
     Redis        localhost:6379
     Mailpit      http://localhost:8025   (SMTP on localhost:1025)
 EOF
-if [[ ${#profiles[@]} -gt 0 ]]; then
+if $with_obs; then
   cat << EOF
     Grafana      http://localhost:3000   (user: $(env_value GRAFANA_ADMIN_USER), password: GRAFANA_ADMIN_PASSWORD in .env)
     Prometheus   http://localhost:9090
     OTLP         localhost:4317 (gRPC), localhost:4318 (HTTP)
+EOF
+fi
+if $with_apps; then
+  cat << EOF
+    API gateway  http://localhost:8080   (admin: $(env_value BOOTSTRAP_ADMIN_EMAIL), password: BOOTSTRAP_ADMIN_PASSWORD in .env)
+    Services     identity :8081, catalog :8082 (direct, for debugging)
 EOF
 fi
 echo "    Verify with: scripts/check-infra.sh"

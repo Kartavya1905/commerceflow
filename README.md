@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 2 of 12.** Architecture, contracts, and the local infrastructure (Postgres, Kafka, Redis, Mailpit, OpenTelemetry, Prometheus, Tempo, Loki, Grafana) are done; services arrive from Milestone 3. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 3 of 12.** Local infrastructure, and the identity, catalog and API gateway services are done: registration and login with rotating refresh tokens, product search with a Redis cache, and a gateway that checks tokens, roles and rate limits. Orders, inventory and payments arrive from Milestone 4. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
@@ -22,13 +22,13 @@ Seven Spring Boot services plus a payment-provider simulator, communicating over
 Requires Java 21, Docker, and (on Windows) Git for Windows. Maven is downloaded by the wrapper.
 
 ```bash
-scripts/dev-up.sh --obs      # infrastructure + observability; creates .env on first run
-scripts/check-infra.sh       # verifies every component end to end
-./mvnw verify                # build and contract tests
-scripts/dev-down.sh          # stop (add --volumes to delete local data)
+scripts/dev-up.sh --obs --apps   # everything; creates .env and a local JWT key on first run
+scripts/check-infra.sh           # verifies every component, then a full flow through the gateway
+./mvnw verify                    # build, unit, contract and integration tests (needs Docker)
+scripts/dev-down.sh              # stop (add --volumes to delete local data)
 ```
 
-On Windows PowerShell use `.\scripts\dev-up.ps1 --obs`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. Grafana is at http://localhost:3000 and Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
+On Windows PowerShell use `.\scripts\dev-up.ps1 --obs --apps`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. The API is at http://localhost:8080 (admin login: `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`), Grafana at http://localhost:3000, Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
 
 ## Project plan
 

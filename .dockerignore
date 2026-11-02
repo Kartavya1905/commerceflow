@@ -1,0 +1,5 @@
+# Images are built from the repository root (see deploy/docker/spring-boot-service.Dockerfile).
+# Send the Docker daemon only the built service jars: no sources, no .git, no .env, no secrets.
+*
+!services/*/target/*.jar
+services/*/target/*-plain.jar

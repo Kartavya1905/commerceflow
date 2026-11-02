@@ -21,6 +21,11 @@
 
   <modules>
     <module>contracts</module>
+    <module>libs/security-tokens</module>
+    <module>libs/web-common</module>
+    <module>services/identity-service</module>
+    <module>services/catalog-service</module>
+    <module>services/api-gateway</module>
   </modules>
 
   <properties>
@@ -30,6 +35,8 @@
     <json-schema-validator.version>3.0.8</json-schema-validator.version>
     <swagger-parser.version>2.1.48</swagger-parser.version>
     <spotless-maven-plugin.version>3.10.4</spotless-maven-plugin.version>
+    <!-- Argon2 password hashing in Spring Security needs BouncyCastle; Boot does not manage it. -->
+    <bouncycastle.version>1.86</bouncycastle.version>
   </properties>
 
   <dependencyManagement>
@@ -45,6 +52,21 @@
         <groupId>dev.commerceflow</groupId>
         <artifactId>contracts</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.commerceflow</groupId>
+        <artifactId>security-tokens</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.commerceflow</groupId>
+        <artifactId>web-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcprov-jdk18on</artifactId>
+        <version>${bouncycastle.version}</version>
       </dependency>
       <dependency>
         <groupId>com.networknt</groupId>
@@ -83,6 +105,13 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <!-- Unit tests (*Test) run in `test` via Surefire; integration tests (*IT), which start
+           containers, run in `integration-test` via Failsafe. Spring Boot's parent configures the
+           executions; declaring the plugin here switches it on for every module. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
       </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>

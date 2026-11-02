@@ -329,10 +329,9 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     TooManyRequests:
-      description: Rate limit exceeded; see the Retry-After header
+      description: >-
+        Rate limit exceeded at the API gateway. No body; Retry-After and X-RateLimit-* headers
+        say when to retry.
       headers:
         Retry-After:
           schema: { type: integer }
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }

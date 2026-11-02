@@ -26,4 +26,23 @@ scrape_configs:
     static_configs:
       - targets: ["loki:3100"]
 
-  # Milestone 3 adds one job per service, scraping /actuator/prometheus.
+  # The services, found by DNS. When the apps profile is not running the names do not resolve,
+  # so these jobs simply have no targets instead of showing as down.
+  - job_name: services
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [identity-service]
+        type: A
+        port: 8081
+        refresh_interval: 10s
+      - names: [catalog-service]
+        type: A
+        port: 8082
+        refresh_interval: 10s
+      - names: [api-gateway]
+        type: A
+        port: 8090
+        refresh_interval: 10s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: service
