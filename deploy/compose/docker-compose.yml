@@ -227,6 +227,55 @@ services:
     healthcheck: *service-health
     mem_limit: 768m
 
+  order-service:
+    <<: *restart
+    profiles: [apps]
+    build:
+      <<: *service-build
+      args:
+        SERVICE: order-service
+    image: commerceflow/order-service:local
+    environment:
+      PORT: 8083
+      ORDER_DB_URL: jdbc:postgresql://postgres:5432/order_db
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?set in .env}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      CATALOG_URI: http://catalog-service:8082
+      JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck: *service-health
+    mem_limit: 768m
+
+  inventory-service:
+    <<: *restart
+    profiles: [apps]
+    build:
+      <<: *service-build
+      args:
+        SERVICE: inventory-service
+    image: commerceflow/inventory-service:local
+    environment:
+      PORT: 8084
+      INVENTORY_DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:?set in .env}
+      JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    ports:
+      - "127.0.0.1:8084:8084"
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    healthcheck: *service-health
+    mem_limit: 768m
+
   api-gateway:
     <<: *restart
     profiles: [apps]
@@ -238,6 +287,8 @@ services:
     environment:
       IDENTITY_URI: http://identity-service:8081
       CATALOG_URI: http://catalog-service:8082
+      ORDER_URI: http://order-service:8083
+      INVENTORY_URI: http://inventory-service:8084
       JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
@@ -249,6 +300,10 @@ services:
       identity-service:
         condition: service_healthy
       catalog-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      inventory-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8090/actuator/health/readiness > /dev/null"]

@@ -49,8 +49,8 @@ Tick an item only when its tests pass on a clean clone. Each milestone ends with
 - [x] `check-infra`: 117 checks including register → login → admin create → public search through the gateway
 - [x] k6 smoke: 2,340 requests, 0 failures ([report](reports/m3-smoke-test.md))
 - [x] gitleaks clean over all trackable files
-- [ ] CI green on GitHub
-- [ ] Tag `m3-done`
+- [x] CI green on GitHub (run 41402508616; the first run 41401290712 failed in the build job for a reason its logs, which need a login, did not reveal; it passed locally, in a Linux container and on re-run, so a flaky test is the likely cause. CI now publishes failures as annotations so the next one is diagnosable)
+- [x] Tag `m3-done`
 
 Found and fixed during this milestone:
 - Hikari `connection-timeout: 3s` is not a valid value (it binds to milliseconds); the service would not start.
@@ -62,7 +62,25 @@ Found and fixed during this milestone:
 - OpenAPI promised a breached-password check and a 429 body that do not exist; contracts corrected.
 - A Redis-down test was weaker than its name; replaced with tests that pin the real library behaviour (ADR-0009).
 
-## Milestones 4–12
+## Milestone 4 — Orders and inventory reservation
+
+- [x] inventory-service: stock with conservation enforced by the database (INV-1, INV-2), per-order reservation claim, all-or-nothing reserve, commit, release, release-before-reserve tombstone, long-stop expiry one order per transaction, audited admin adjustments, public availability
+- [x] order-service: Redis cart (7-day TTL, 50 products), idempotent `POST /orders` per customer and key with a canonical request hash, prices only from catalog via timeouts and a circuit breaker, outside the DB transaction; owner-scoped history; admin view
+- [x] `libs/test-support`: shared token minting and containers (catalog moved onto it)
+- [x] Gateway routes for cart, orders, inventory; compose, Prometheus and check-infra cover five services
+- [x] Tests: inventory 37 (last-unit race 100 buyers x 20 runs, 200 opposite-order runs, duplicate deliveries, every lifecycle transition), order 20 (idempotency races, ownership, catalog failure, slow catalog, circuit open and recovery)
+- [x] `check-infra`: 126 checks, including restock → cart → order → replay → ownership through the gateway
+- [x] Mutation checks: 5 of 6 regressions caught (see below)
+- [ ] CI green on GitHub
+- [ ] Tag `m4-done`
+
+Found during this milestone:
+- A test helper created the circuit breaker with library defaults (open after 100 calls) before the service could configure it; the outage test caught it. Production code never looks breakers up by name.
+- A `check-infra` step passed by comparing two empty order ids, because a temp file was written where bash could not read it; now no temp file, and ids must be non-empty.
+- Mutation that removed the product-id sort before locking **survived**: with all of an order's rows locked in one statement, PostgreSQL's scan order is already consistent when plans match, as they do on small test tables. The `ORDER BY` stays so lock order does not depend on the query plan; no test here can force two different plans.
+- OpenAPI listed an inventory `sku` the service does not have and only one of four 422 causes; corrected.
+
+## Milestones 5–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

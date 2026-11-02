@@ -1,4 +1,4 @@
-package dev.commerceflow.catalog;
+package dev.commerceflow.testsupport;
 
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -6,8 +6,15 @@ import org.springframework.context.annotation.Bean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Same image versions as docker-compose. */
+/**
+ * The same images and versions as deploy/compose/docker-compose.yml, so tests run against what the
+ * services run against. Import the ones a test needs, e.g.
+ * {@code @Import(Containers.Postgres.class)}.
+ */
 public final class Containers {
+
+  public static final String POSTGRES_IMAGE = "postgres:18.6";
+  public static final String REDIS_IMAGE = "redis:8.10.3";
 
   private Containers() {}
 
@@ -16,7 +23,7 @@ public final class Containers {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgres() {
-      return new PostgreSQLContainer("postgres:18.6");
+      return new PostgreSQLContainer(POSTGRES_IMAGE);
     }
   }
 
@@ -25,7 +32,7 @@ public final class Containers {
     @Bean
     @ServiceConnection(name = "redis")
     GenericContainer<?> redis() {
-      return new GenericContainer<>("redis:8.10.3").withExposedPorts(6379);
+      return new GenericContainer<>(REDIS_IMAGE).withExposedPorts(6379);
     }
   }
 }

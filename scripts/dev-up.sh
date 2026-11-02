@@ -60,7 +60,7 @@ ensure_env_file() {
 check_ports() {
   local ports=(5432 9092 6379 1025 8025)
   ! $with_obs || ports+=(4317 4318 9090 3000)
-  ! $with_apps || ports+=(8080 8081 8082)
+  ! $with_apps || ports+=(8080 8081 8082 8083 8084)
 
   # `docker port` lists each mapping on its own line ("4317/tcp -> 127.0.0.1:4317"), unlike
   # `docker ps`, which condenses neighbours into ranges such as 4317-4318.
@@ -99,7 +99,7 @@ build_jars() {
   # mvnw is a bash script that hands /c/... classpath entries to the Windows java.exe, which
   # needs Git Bash's path conversion. common.sh turns that off for docker, so undo it here.
   (cd "$ROOT" && env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ./mvnw -B -ntp -q package \
-    -DskipTests -pl services/identity-service,services/catalog-service,services/api-gateway -am) ||
+    -DskipTests -pl services/identity-service,services/catalog-service,services/order-service,services/inventory-service,services/api-gateway -am) ||
     die "the Maven build failed; run ./mvnw package -DskipTests to see why"
 }
 
@@ -167,7 +167,7 @@ fi
 if $with_apps; then
   cat << EOF
     API gateway  http://localhost:8080   (admin: $(env_value BOOTSTRAP_ADMIN_EMAIL), password: BOOTSTRAP_ADMIN_PASSWORD in .env)
-    Services     identity :8081, catalog :8082 (direct, for debugging)
+    Services     identity :8081, catalog :8082, order :8083, inventory :8084 (direct, for debugging)
 EOF
 fi
 echo "    Verify with: scripts/check-infra.sh"

@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 3 of 12.** Local infrastructure, and the identity, catalog and API gateway services are done: registration and login with rotating refresh tokens, product search with a Redis cache, and a gateway that checks tokens, roles and rate limits. Orders, inventory and payments arrive from Milestone 4. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 4 of 12.** Identity, catalog, gateway, inventory and order services run locally: rotating refresh tokens, cached product search, stock reservations that cannot oversell (tested with 100 buyers racing for one unit), and idempotent order submission priced only by the catalog. Orders stay `PENDING` until Kafka and the saga connect the services in Milestones 5 and 6. Nothing below is a measured result yet. Performance and recovery numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 

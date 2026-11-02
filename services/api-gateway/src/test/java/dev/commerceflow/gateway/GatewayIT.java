@@ -40,6 +40,8 @@ class GatewayIT {
   static void properties(DynamicPropertyRegistry registry) {
     registry.add("IDENTITY_URI", BACKEND::baseUrl);
     registry.add("CATALOG_URI", BACKEND::baseUrl);
+    registry.add("ORDER_URI", BACKEND::baseUrl);
+    registry.add("INVENTORY_URI", BACKEND::baseUrl);
     registry.add(
         "commerceflow.gateway.jwk-set-uri", () -> BACKEND.baseUrl() + "/.well-known/jwks.json");
     registry.add("MANAGEMENT_PORT", () -> "0");
@@ -128,6 +130,45 @@ class GatewayIT {
             .getFirst("X-Correlation-Id");
     assertThat(replaced).matches("[0-9a-f-]{36}");
     assertThat(BACKEND.requests.peek().correlationId()).isEqualTo(replaced);
+  }
+
+  /** Milestone 4 routes: inventory availability is public, carts and orders need a token. */
+  @Test
+  void orderAndInventoryRoutesAreWiredWithTheRightAccessRules() {
+    client
+        .get()
+        .uri("/api/v1/inventory/" + java.util.UUID.randomUUID())
+        .exchange()
+        .expectStatus()
+        .isOk();
+    client.get().uri("/api/v1/orders").exchange().expectStatus().isUnauthorized();
+    client.get().uri("/api/v1/cart").exchange().expectStatus().isUnauthorized();
+    client
+        .get()
+        .uri("/api/v1/admin/inventory/x")
+        .header("Authorization", "Bearer " + BACKEND.token("CUSTOMER"))
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+
+    String customer = "Bearer " + BACKEND.token("CUSTOMER");
+    client
+        .get()
+        .uri("/api/v1/orders")
+        .header("Authorization", customer)
+        .exchange()
+        .expectStatus()
+        .isOk();
+    client
+        .get()
+        .uri("/api/v1/cart")
+        .header("Authorization", customer)
+        .exchange()
+        .expectStatus()
+        .isOk();
+    assertThat(BACKEND.sawPath("/api/v1/orders")).isTrue();
+    assertThat(BACKEND.sawPath("/api/v1/cart")).isTrue();
+    assertThat(BACKEND.sawPath("/api/v1/admin/inventory/x")).isFalse();
   }
 
   /** Container health checks and Prometheus use the management port without a token. */

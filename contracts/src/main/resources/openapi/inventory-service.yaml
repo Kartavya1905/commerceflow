@@ -98,10 +98,9 @@ components:
   schemas:
     Stock:
       type: object
-      required: [productId, sku, available, reserved, committed, version]
+      required: [productId, available, reserved, committed, version]
       properties:
         productId: { type: string, format: uuid }
-        sku: { type: string }
         available: { type: integer, minimum: 0 }
         reserved: { type: integer, minimum: 0 }
         committed: { type: integer, minimum: 0 }

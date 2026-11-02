@@ -74,7 +74,8 @@ public class SecurityConfig {
                         HttpMethod.GET,
                         "/.well-known/jwks.json",
                         "/api/v1/products",
-                        "/api/v1/products/**")
+                        "/api/v1/products/**",
+                        "/api/v1/inventory/*")
                     .permitAll()
                     // Served only on the management port (8090), which is not published; on the
                     // public port nothing handles these paths, so they answer 404.

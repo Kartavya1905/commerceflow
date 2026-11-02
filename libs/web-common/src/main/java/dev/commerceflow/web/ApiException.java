@@ -1,5 +1,7 @@
 package dev.commerceflow.web;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -11,12 +13,26 @@ public class ApiException extends RuntimeException {
   private final HttpStatus status;
   private final String type;
   private final String title;
+  private final Map<String, Object> properties = new LinkedHashMap<>();
 
   public ApiException(HttpStatus status, String type, String title, String detail) {
     super(detail);
     this.status = status;
     this.type = type;
     this.title = title;
+  }
+
+  /**
+   * Adds a field to the problem body, for details the client can act on (for example which products
+   * are unavailable). Never put internal or sensitive data here.
+   */
+  public ApiException withProperty(String name, Object value) {
+    properties.put(name, value);
+    return this;
+  }
+
+  public Map<String, Object> properties() {
+    return Map.copyOf(properties);
   }
 
   public static ApiException notFound(String what) {

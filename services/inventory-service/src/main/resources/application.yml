@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: inventory-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${INVENTORY_DB_URL:jdbc:postgresql://localhost:5432/inventory_db}
+    username: ${INVENTORY_DB_USER:inventory_svc}
+    password: ${INVENTORY_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 20
+      # Milliseconds: Hikari binds this straight to a long.
+      connection-timeout: 3000
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${PORT:8084}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+commerceflow:
+  inventory:
+    jwk-set-uri: ${JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+    # Long-stop for reservations the saga never resolves. Should never fire; alert if it does.
+    reservation-long-stop: 24h
+    expiry-batch-size: 100

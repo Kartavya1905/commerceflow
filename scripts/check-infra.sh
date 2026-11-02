@@ -271,7 +271,7 @@ fi
 # --- Services end to end through the gateway (only when the apps profile is running) -----------
 if container_running api-gateway; then
   echo "-- services"
-  for svc in identity-service catalog-service api-gateway; do
+  for svc in identity-service catalog-service order-service inventory-service api-gateway; do
     check "$svc is healthy" container_healthy "$svc"
   done
 
@@ -315,15 +315,54 @@ if container_running api-gateway; then
   code=$(http_status -H "Authorization: Bearer $admin" "$gw/actuator/prometheus")
   [[ "$code" == 404 ]] && pass "service actuators are not routed, even for an admin" || fail "/actuator/prometheus returned $code"
 
+  # Milestone 4: stock, cart and an idempotent order, all through the gateway.
+  stocked=$(curl -s --max-time 10 -H "Authorization: Bearer $admin" -H 'Content-Type: application/json' \
+    -d '{"delta":5,"reason":"RESTOCK"}' "$gw/api/v1/admin/inventory/$product_id/adjustments")
+  [[ "$stocked" == *'"available":5'* ]] && pass "an admin can restock a product" || fail "restock failed: $stocked"
+  curl -s --max-time 10 "$gw/api/v1/inventory/$product_id" | grep -q '"inStock":true' &&
+    pass "anyone can see it is in stock" || fail "public availability is wrong"
+
+  code=$(http_status -X PUT -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' \
+    -d '{"quantity":2}' "$gw/api/v1/cart/items/$product_id")
+  [[ "$code" == 200 ]] && pass "the customer can fill a cart" || fail "cart update returned $code"
+
+  key="check-infra-$(random_secret | head -c 20)"
+  order_body="{\"items\":[{\"productId\":\"$product_id\",\"quantity\":2}],\"paymentToken\":\"tok_success\"}"
+  # Body and status from one call: the status is appended on its own last line. (No temp file:
+  # on Windows, curl.exe and bash do not agree on where /tmp is.)
+  place_order() {
+    curl -s --max-time 10 -w '\n%{http_code}' -H "Authorization: Bearer $customer" \
+      -H "Idempotency-Key: $key" -H 'Content-Type: application/json' -d "$order_body" "$gw/api/v1/orders"
+  }
+  first=$(place_order)
+  first_code=$(tail -n 1 <<< "$first")
+  order_id=$(head -n -1 <<< "$first" | json_field id)
+  [[ "$first_code" == 202 && -n "$order_id" && "$first" == *'"totalMinor":3998'* ]] &&
+    pass "an order is accepted and priced by catalog (2 x 1999)" || fail "order returned $first_code: $first"
+  replay=$(place_order)
+  replay_id=$(head -n -1 <<< "$replay" | json_field id)
+  # Both ids must be real: two empty strings are equal too.
+  [[ "$(tail -n 1 <<< "$replay")" == 200 && -n "$order_id" && "$replay_id" == "$order_id" ]] &&
+    pass "retrying with the same Idempotency-Key returns the same order" || fail "replay returned: $replay"
+
+  curl -s --max-time 10 -H "Authorization: Bearer $customer" "$gw/api/v1/orders/$order_id" | grep -q '"status":"PENDING"' &&
+    pass "the customer sees the order as PENDING" || fail "the customer cannot read the order"
+  other_email="check-infra-$(random_secret | head -c 10)@example.com"
+  http_status -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$other_email\",\"password\":\"$password\",\"displayName\":\"Other\"}" "$gw/api/v1/auth/register" > /dev/null
+  stranger=$(post_json /api/v1/auth/login "{\"email\":\"$other_email\",\"password\":\"$password\"}" | json_field accessToken)
+  code=$(http_status -H "Authorization: Bearer $stranger" "$gw/api/v1/orders/$order_id")
+  [[ "$code" == 404 ]] && pass "another customer cannot see it (404, not 403)" || fail "another customer got $code"
+
   # Leave the shared catalogue as we found it.
   http_status -X POST -H "Authorization: Bearer $admin" "$gw/api/v1/admin/products/$product_id/archive" > /dev/null
 
   if container_running prometheus; then
     services_up() {
       [[ $(curl -sS --get --data-urlencode 'query=sum(up{job="services"})' http://127.0.0.1:9090/api/v1/query |
-        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 3 ]]
+        grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 5 ]]
     }
-    if eventually 60 services_up; then pass "prometheus scrapes all three services"; else fail "prometheus is not scraping all three services"; fi
+    if eventually 60 services_up; then pass "prometheus scrapes all five services"; else fail "prometheus is not scraping all five services"; fi
   fi
 else
   echo "-- services: skipped (start with scripts/dev-up.sh --apps to include them)"

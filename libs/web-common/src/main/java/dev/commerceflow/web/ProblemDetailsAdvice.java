@@ -31,6 +31,7 @@ public class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
   @ExceptionHandler(ApiException.class)
   ResponseEntity<Object> handleApi(ApiException e, WebRequest request) {
     ProblemDetail problem = problem(e.status(), e.type(), e.title(), e.getMessage());
+    e.properties().forEach(problem::setProperty);
     return handleExceptionInternal(e, problem, new HttpHeaders(), e.status(), request);
   }
 

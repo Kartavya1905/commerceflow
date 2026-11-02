@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: order-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${ORDER_DB_URL:jdbc:postgresql://localhost:5432/order_db}
+    username: ${ORDER_DB_USER:order_svc}
+    password: ${ORDER_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 20
+      # Milliseconds: Hikari binds this straight to a long.
+      connection-timeout: 3000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 500ms
+      connect-timeout: 500ms
+  jackson:
+    deserialization:
+      # A request with a field we do not define (say, a client-supplied price) is rejected
+      # instead of silently ignored.
+      fail-on-unknown-properties: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${PORT:8083}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # The cart is in Redis, but an outage there should fail cart calls, not mark the whole
+    # service unready and stop order history from being served.
+    redis:
+      enabled: false
+
+commerceflow:
+  order:
+    jwk-set-uri: ${JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+    catalog-uri: ${CATALOG_URI:http://localhost:8082}
+    catalog-connect-timeout: 500ms
+    catalog-read-timeout: 1s
+    cart-ttl: 7d
+    cart-max-items: 50
+    # Circuit breaker around the price lookup. Opens when at least half of the last 10 calls
+    # failed (after 5 calls), then fails fast for 10 s before letting a trial call through.
+    breaker-window: 10
+    breaker-minimum-calls: 5
+    breaker-failure-rate: 50
+    breaker-open-for: 10s

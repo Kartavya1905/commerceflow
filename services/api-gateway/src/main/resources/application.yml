@@ -51,6 +51,18 @@ spring:
                 - Path=/api/v1/products,/api/v1/products/**,/api/v1/admin/products/**
               filters:
                 - *general-rate-limit
+            - id: order
+              uri: ${ORDER_URI:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/cart,/api/v1/cart/**,/api/v1/orders,/api/v1/orders/**,/api/v1/admin/orders,/api/v1/admin/orders/**,/api/v1/admin/sagas,/api/v1/admin/sagas/**
+              filters:
+                - *general-rate-limit
+            - id: inventory
+              uri: ${INVENTORY_URI:http://localhost:8084}
+              predicates:
+                - Path=/api/v1/inventory/**,/api/v1/admin/inventory/**
+              filters:
+                - *general-rate-limit
 
 server:
   port: ${PORT:8080}

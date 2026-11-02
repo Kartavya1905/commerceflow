@@ -97,7 +97,10 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422':
-          description: Idempotency-Key reused with a different request body
+          description: >-
+            Idempotency-Key reused with a different request body (idempotency-key-reused); products
+            that do not exist or are archived, listed in productIds (unavailable-products); products in
+            different currencies (mixed-currencies); or a total too large to process (order-too-large).
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }

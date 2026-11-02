@@ -1,4 +1,4 @@
-package dev.commerceflow.catalog;
+package dev.commerceflow.testsupport;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import dev.commerceflow.security.Jwts;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
@@ -23,8 +24,9 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 /**
- * Stands in for identity-service: a test key pair, a decoder that trusts it (with the production
- * issuer and audience rules), and helpers to mint tokens.
+ * Stands in for identity-service in a service's tests: a key pair generated per test run, a decoder
+ * that trusts it with the production issuer and audience rules, and helpers to mint tokens. Import
+ * it with {@code @Import(TestTokens.class)}.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestTokens {
@@ -41,15 +43,22 @@ public class TestTokens {
     return Jwts.decoder((RSAPublicKey) KEYS.getPublic());
   }
 
+  /** "Bearer ..." for the fixed test admin. */
   public static String admin() {
-    return "Bearer " + mint(ADMIN_ID, "ADMIN");
+    return bearer(ADMIN_ID, "ADMIN");
   }
 
+  /** "Bearer ..." for the fixed test customer. */
   public static String customer() {
-    return "Bearer " + mint(CUSTOMER_ID, "CUSTOMER");
+    return bearer(CUSTOMER_ID, "CUSTOMER");
   }
 
-  static String mint(UUID subject, String role) {
+  /** "Bearer ..." for any subject and role, e.g. a second customer in cross-account tests. */
+  public static String bearer(UUID subject, String role) {
+    return "Bearer " + mint(subject, role);
+  }
+
+  public static String mint(UUID subject, String role) {
     Instant now = Instant.now();
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
@@ -70,7 +79,7 @@ public class TestTokens {
       KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
       generator.initialize(2048);
       return generator.generateKeyPair();
-    } catch (Exception e) {
+    } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }
   }

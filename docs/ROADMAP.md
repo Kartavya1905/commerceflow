@@ -110,7 +110,7 @@ Do not start milestone N+1 while milestone N has a failing test.
 |---|---|
 | **Goal** | Correct, concurrency-safe core domain in each service before adding messaging: cart, idempotent order creation with price snapshot, atomic reservation, commit, release |
 | **Prerequisites** | M3 |
-| **Decisions** | Conditional `UPDATE` for reservation; lines sorted by product id; `UNIQUE(customer_id, idempotency_key)` + request hash; cart in Redis with 7-day TTL; order → catalog price lookup with timeout and circuit breaker |
+| **Decisions** | Reservation claimed per order in `order_reservations`, then all rows locked in one `SELECT ... ORDER BY product_id FOR UPDATE`, guarded updates, DB `CHECK` constraints for INV-1/INV-2; `UNIQUE(customer_id, idempotency_key)` + request hash; cart in Redis with 7-day TTL; order → catalog price lookup with timeout and circuit breaker |
 | **Steps** | 1. inventory schema and `ReservationService` (reserve all-or-nothing, commit, release, all idempotent by order id). 2. Admin stock adjustments with audit. 3. order schema, cart API, `POST /orders` → `202`. 4. Owner-scoped order queries |
 | **Tests** | `LastUnitRaceIT` (100 concurrent reservations, stock 1 → exactly one success, repeated 20×); multi-line deadlock test (two orders with lines in opposite order, 200 iterations, no deadlock); reserve twice for same order → one reservation; release twice → stock restored once; same idempotency key + same body → same order; same key + different body → `422`; concurrent duplicate submissions → one order; customer B reading A's order → `404`; catalog down → `503 PRICE_UNAVAILABLE` within timeout |
 | **Acceptance** | All green; INV-1, INV-2, INV-7 asserted after every test |

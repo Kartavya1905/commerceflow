@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import dev.commerceflow.catalog.config.CacheConfig;
+import dev.commerceflow.testsupport.Containers;
+import dev.commerceflow.testsupport.TestTokens;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
