@@ -164,7 +164,7 @@ Found during this milestone:
 - Playwright's failure traces in `frontend/test-results/` recorded test tokens and the admin's sign-in request, and git did not ignore them. They are ignored now, the old ones were deleted, and none were ever committed.
 - Two smoke tests reused the account the first test registers, so one failure took all three down. Each now has its own customer.
 
-Added after the tag: `POST /api/v1/admin/payments/{attemptId}/reconcile` ("reconcile now"), in the contract since Milestone 6 but never built. It brings an attempt's next look forward to the reconciler's next round (within 10 s), so the look still goes through the usual claim and guarded updates. 202, or 409 for a settled attempt, 404 for none; every request audited (payment-service gets `audit_events`, V3). A "Reconcile now" button on the admin payments page shows only where there is something to look for. Tests: `ReconcileNowIT` 5 (including asking twice resolving once), Vitest 2; mutation check (settled attempt made reconcilable) caught
+Added after the tag: `POST /api/v1/admin/payments/{attemptId}/reconcile` ("reconcile now"), in the contract since Milestone 6 but never built. It brings an attempt's next look forward to the reconciler's next round (within 10 s), so the look still goes through the usual claim and guarded updates. 202, or 409 for a settled attempt, 404 for none; every request audited (payment-service gets `audit_events`, V3). A "Reconcile now" button on the admin payments page shows only where there is something to look for. Tests: `ReconcileNowIT` 5 (including asking twice resolving once), Vitest 2; mutation check (settled attempt made reconcilable) caught. Commit 06114ab, CI green (run 41706802993, first attempt)
 
 ## Milestones 9–12
 
