@@ -172,6 +172,29 @@ class GatewayIT {
     assertThat(BACKEND.sawPath("/api/v1/admin/inventory/x")).isFalse();
   }
 
+  /** Milestone 7: dead-letter listing and replay reach order-service for admins only. */
+  @Test
+  void deadLetterAdminRouteIsAdminOnly() {
+    String path = "/api/v1/admin/dlt/order.events.v1.dlt";
+    client.get().uri(path).exchange().expectStatus().isUnauthorized();
+    client
+        .get()
+        .uri(path)
+        .header("Authorization", "Bearer " + BACKEND.token("CUSTOMER"))
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+    assertThat(BACKEND.sawPath(path)).isFalse();
+    client
+        .get()
+        .uri(path)
+        .header("Authorization", "Bearer " + BACKEND.token("ADMIN"))
+        .exchange()
+        .expectStatus()
+        .isOk();
+    assertThat(BACKEND.sawPath(path)).isTrue();
+  }
+
   /** Milestone 6: payment attempts are visible to admins only, and nothing else of payment is. */
   @Test
   void paymentAdminRouteIsAdminOnly() {

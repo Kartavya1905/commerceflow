@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -56,6 +57,10 @@ class SagaTransitionsTest {
         SagaState.AWAITING_RECONCILIATION,
         SagaEvent.PAYMENT_TIMED_OUT,
         SagaState.RELEASING_INVENTORY);
+    design(
+        SagaState.AWAITING_RECONCILIATION,
+        SagaEvent.DEADLINE_EXCEEDED,
+        SagaState.CANCELLING_PAYMENT);
     design(
         SagaState.CANCELLING_PAYMENT, SagaEvent.PAYMENT_CANCELLED, SagaState.RELEASING_INVENTORY);
     design(SagaState.CANCELLING_PAYMENT, SagaEvent.PAYMENT_REFUNDED, SagaState.RELEASING_INVENTORY);
@@ -232,6 +237,48 @@ class SagaTransitionsTest {
                   };
               assertThat(t.command()).isEqualTo(expected);
             });
+  }
+
+  /** What the sweeper re-sends is what was sent on the way into the state, for every way in. */
+  @Test
+  void theStepCommandIsWhatEveryTransitionIntoTheStateSent() {
+    SagaTransitions.TABLE
+        .values()
+        .forEach(
+            t ->
+                assertThat(SagaTransitions.stepCommand(t.to()))
+                    .as("step command of %s", t.to())
+                    .isEqualTo(t.command()));
+    assertThat(SagaTransitions.stepCommand(SagaState.AWAITING_RESERVATION))
+        .isEqualTo(Command.RESERVE_INVENTORY);
+  }
+
+  /**
+   * INV-6 needs the sweeper to have a move in every unfinished state: either a step command to
+   * re-send, or a deadline transition to take. A state with neither could wait forever.
+   */
+  @ParameterizedTest
+  @EnumSource(SagaState.class)
+  void theSweeperAlwaysHasAMove(SagaState state) {
+    boolean resends = SagaTransitions.stepCommand(state) != Command.NONE;
+    boolean givesUp = SagaTransitions.next(state, SagaEvent.DEADLINE_EXCEEDED).isPresent();
+    if (state.terminal()) {
+      assertThat(resends || givesUp).isFalse();
+    } else {
+      assertThat(resends || givesUp).as("%s has no move", state).isTrue();
+    }
+  }
+
+  /** Giving up must never strand money: each deadline transition starts compensation. */
+  @Test
+  void everyDeadlineTransitionCompensates() {
+    SagaTransitions.TABLE.forEach(
+        (key, t) -> {
+          if (key.event() == SagaEvent.DEADLINE_EXCEEDED) {
+            assertThat(t.command()).isIn(Command.RELEASE_INVENTORY, Command.CANCEL_PAYMENT);
+            assertThat(t.failureReason()).isNotNull();
+          }
+        });
   }
 
   @Test

@@ -3,7 +3,9 @@ package dev.commerceflow.messaging;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.commerceflow.messaging.MessagingProperties.Chaos;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -65,6 +67,25 @@ class InboundEventsTest {
                 .counter("messaging.poison", "consumer", "test", "topic", "payment.commands.v1")
                 .count())
         .isEqualTo(1);
+  }
+
+  @Test
+  void injectedFailuresHappenBeforeTheHandlerAndAreCounted() {
+    InboundEvents chaotic = new InboundEvents(null, null, meters, new Chaos(Duration.ZERO, 1.0));
+    AtomicReference<Boolean> ran = new AtomicReference<>(false);
+    assertThatThrownBy(
+            () -> chaotic.handleUntransacted(record(UUID.randomUUID()), "test", e -> ran.set(true)))
+        .isInstanceOf(InboundEvents.InjectedFailure.class);
+    assertThat(ran.get()).isFalse();
+    assertThat(meters.counter("messaging.chaos.failures", "consumer", "test").count()).isEqualTo(1);
+    // The context is cleared even when the injected failure escapes.
+    assertThat(EventContext.causationId()).isNull();
+  }
+
+  @Test
+  void chaosIsOffByDefault() {
+    assertThat(Chaos.NONE.active()).isFalse();
+    assertThat(new Chaos(Duration.ofMillis(1), 0).active()).isTrue();
   }
 
   static ConsumerRecord<String, String> record(UUID eventId) {

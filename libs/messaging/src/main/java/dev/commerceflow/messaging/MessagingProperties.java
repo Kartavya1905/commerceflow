@@ -15,6 +15,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param retryAttempts consumer attempts per record before it goes to the dead-letter topic
  * @param retryInitial first consumer retry delay
  * @param retryMax longest consumer retry delay
+ * @param outageRetryMax longest consumer retry delay while the database is unreachable; those
+ *     retries have no limit, because retrying is exactly what fixes them
+ * @param chaos fault injection for the failure-recovery tests; off unless set
  */
 @ConfigurationProperties("commerceflow.messaging")
 public record MessagingProperties(
@@ -27,4 +30,26 @@ public record MessagingProperties(
     @DefaultValue("14d") Duration processedRetention,
     @DefaultValue("6") int retryAttempts,
     @DefaultValue("200ms") Duration retryInitial,
-    @DefaultValue("10s") Duration retryMax) {}
+    @DefaultValue("10s") Duration retryMax,
+    @DefaultValue("30s") Duration outageRetryMax,
+    @DefaultValue Chaos chaos) {
+
+  /**
+   * Makes consumers slow or unreliable on purpose, so the failure-recovery tests can check that the
+   * system still ends up consistent. Applied before the handler and its transaction, so an injected
+   * failure has nothing to undo and goes through the normal retries (and, when unlucky, to the
+   * dead-letter topic).
+   *
+   * @param consumerDelay added before every record is handled
+   * @param consumerFailureRate the share of handling attempts that fail, from 0 to 1
+   */
+  public record Chaos(
+      @DefaultValue("0ms") Duration consumerDelay, @DefaultValue("0") double consumerFailureRate) {
+
+    public static final Chaos NONE = new Chaos(Duration.ZERO, 0);
+
+    public boolean active() {
+      return consumerDelay.isPositive() || consumerFailureRate > 0;
+    }
+  }
+}

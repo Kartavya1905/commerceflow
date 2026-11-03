@@ -1,8 +1,10 @@
 package dev.commerceflow.messaging;
 
+import dev.commerceflow.messaging.MessagingProperties.Chaos;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -29,12 +31,25 @@ public class InboundEvents {
   private final JdbcClient jdbc;
   private final TransactionTemplate tx;
   private final MeterRegistry meters;
+  private final Chaos chaos;
   private final JsonMapper json = JsonMapper.builder().build();
 
+  /** A failure injected by {@link Chaos}; retried like any other processing failure. */
+  public static final class InjectedFailure extends RuntimeException {
+    InjectedFailure(String consumer) {
+      super("injected failure in " + consumer + " (commerceflow.messaging.chaos)");
+    }
+  }
+
   public InboundEvents(JdbcClient jdbc, TransactionTemplate tx, MeterRegistry meters) {
+    this(jdbc, tx, meters, Chaos.NONE);
+  }
+
+  public InboundEvents(JdbcClient jdbc, TransactionTemplate tx, MeterRegistry meters, Chaos chaos) {
     this.jdbc = jdbc;
     this.tx = tx;
     this.meters = meters;
+    this.chaos = chaos;
   }
 
   /**
@@ -103,6 +118,7 @@ public class InboundEvents {
         event.correlationId() != null ? event.correlationId() : "evt-" + event.eventId());
     EventContext.enter(event.eventId());
     try {
+      injectChaos(consumer);
       Boolean applied = body.apply(event);
       meters
           .counter(
@@ -117,6 +133,24 @@ public class InboundEvents {
     } finally {
       EventContext.exit();
       MDC.remove(MDC_CORRELATION);
+    }
+  }
+
+  private void injectChaos(String consumer) {
+    if (!chaos.active()) {
+      return;
+    }
+    if (chaos.consumerDelay().isPositive()) {
+      try {
+        Thread.sleep(chaos.consumerDelay());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted during an injected delay", e);
+      }
+    }
+    if (ThreadLocalRandom.current().nextDouble() < chaos.consumerFailureRate()) {
+      meters.counter("messaging.chaos.failures", "consumer", consumer).increment();
+      throw new InjectedFailure(consumer);
     }
   }
 

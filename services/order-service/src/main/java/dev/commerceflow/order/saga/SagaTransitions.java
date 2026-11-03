@@ -36,6 +36,8 @@ public final class SagaTransitions {
   /** The message sent on a transition. */
   public enum Command {
     NONE,
+    /** Sent as OrderCreated: inventory reserves on it, and answers a repeat with its decision. */
+    RESERVE_INVENTORY,
     AUTHORIZE_PAYMENT,
     COMMIT_INVENTORY,
     RELEASE_INVENTORY,
@@ -103,7 +105,15 @@ public final class SagaTransitions {
                   "SAGA_TIMEOUT",
                   "PAYMENT_TIMEOUT"),
 
-          // Waiting for payment-service to find out what happened to the charge.
+          // Waiting for payment-service to find out what happened to the charge. If it has not by
+          // the (long) deadline, cancel: that refunds a charge it finds, or voids the attempt.
+          on(AWAITING_RECONCILIATION, DEADLINE_EXCEEDED)
+              .go(
+                  CANCELLING_PAYMENT,
+                  null,
+                  Command.CANCEL_PAYMENT,
+                  "SAGA_TIMEOUT",
+                  "PAYMENT_TIMEOUT"),
           on(AWAITING_RECONCILIATION, PAYMENT_SUCCEEDED)
               .go(AWAITING_COMMIT, null, Command.COMMIT_INVENTORY, null, null),
           on(AWAITING_RECONCILIATION, PAYMENT_DECLINED)
@@ -149,6 +159,22 @@ public final class SagaTransitions {
               .go(FAILED, "FAILED", Command.NONE, null, null));
 
   private SagaTransitions() {}
+
+  /**
+   * The message whose answer a state is waiting for: what every transition into it sends, and what
+   * the deadline sweeper re-sends when the answer is late. NONE for a state that waits on someone
+   * else (reconciliation) and for the finished states.
+   */
+  public static Command stepCommand(SagaState state) {
+    return switch (state) {
+      case AWAITING_RESERVATION -> Command.RESERVE_INVENTORY;
+      case AWAITING_PAYMENT -> Command.AUTHORIZE_PAYMENT;
+      case AWAITING_COMMIT -> Command.COMMIT_INVENTORY;
+      case CANCELLING_PAYMENT, REFUNDING_PAYMENT -> Command.CANCEL_PAYMENT;
+      case RELEASING_INVENTORY -> Command.RELEASE_INVENTORY;
+      case AWAITING_RECONCILIATION, COMPLETED, FAILED -> Command.NONE;
+    };
+  }
 
   public static Optional<Transition> next(SagaState state, SagaEvent event) {
     return Optional.ofNullable(TABLE.get(new Key(state, event)));

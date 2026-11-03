@@ -94,6 +94,11 @@ public class PaymentService {
     throw new IllegalStateException("cancel of order " + orderId + " kept racing; will retry");
   }
 
+  /** For the reconciler: a REFUND_PENDING attempt whose refund call failed earlier. */
+  void retryRefund(Attempt attempt) {
+    refund(attempt);
+  }
+
   /** Same idempotency key on every retry, so a refund retried after a lost reply refunds once. */
   private void refund(Attempt attempt) {
     String refundId =

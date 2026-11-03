@@ -54,7 +54,7 @@ spring:
             - id: order
               uri: ${ORDER_URI:http://localhost:8083}
               predicates:
-                - Path=/api/v1/cart,/api/v1/cart/**,/api/v1/orders,/api/v1/orders/**,/api/v1/admin/orders,/api/v1/admin/orders/**,/api/v1/admin/sagas,/api/v1/admin/sagas/**
+                - Path=/api/v1/cart,/api/v1/cart/**,/api/v1/orders,/api/v1/orders/**,/api/v1/admin/orders,/api/v1/admin/orders/**,/api/v1/admin/sagas,/api/v1/admin/sagas/**,/api/v1/admin/dlt/**
               filters:
                 - *general-rate-limit
             - id: inventory

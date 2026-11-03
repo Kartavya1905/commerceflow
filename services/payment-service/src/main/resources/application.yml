@@ -68,8 +68,19 @@ commerceflow:
     provider-connect-timeout: 500ms
     # A charge that has not answered by now is UNKNOWN: it may or may not have happened.
     provider-read-timeout: 2s
-    # When the reconciler (Milestone 7) should first look at an UNKNOWN attempt.
+    # When the reconciler first looks at an UNKNOWN attempt, and the base of its backoff: the
+    # n-th look waits a random time between zero and reconcile-after * 2^n, at most
+    # reconcile-backoff-max. It runs every reconcile-interval, up to reconcile-batch attempts.
     reconcile-after: 30s
+    reconcile-backoff-max: 5m
+    reconcile-interval: 10s
+    reconcile-batch: 50
+    # An attempt whose outcome is still unknown after this long, with no charge at the provider,
+    # fails (PaymentFailed TIMEOUT_UNRESOLVED). NFR-04 bounds reconciliation by this window.
+    reconcile-window: 15m
+    # An INITIATED attempt older than this was left behind by a crash: no live charge call
+    # (connect plus read timeout) takes anywhere near this long.
+    reconcile-stale-initiated: 30s
     breaker-window: 10
     breaker-minimum-calls: 5
     breaker-failure-rate: 50

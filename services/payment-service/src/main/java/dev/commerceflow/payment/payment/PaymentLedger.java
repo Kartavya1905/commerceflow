@@ -1,5 +1,6 @@
 package dev.commerceflow.payment.payment;
 
+import dev.commerceflow.messaging.Backoff;
 import dev.commerceflow.messaging.OutboxWriter;
 import dev.commerceflow.messaging.Uuids;
 import dev.commerceflow.payment.config.PaymentConfig.PaymentProperties;
@@ -9,6 +10,7 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -152,9 +154,11 @@ class PaymentLedger {
             .update();
     Attempt attempt = find(attemptId);
     if (moved == 0) {
-      if (chargeId != null && "CANCELLED".equals(attempt.status())) {
-        // The saga gave up and the cancel found no charge, but the charge was still in flight
-        // and went through. The customer must not pay for an order that failed (INV-5).
+      if (chargeId != null
+          && ("CANCELLED".equals(attempt.status()) || "FAILED".equals(attempt.status()))) {
+        // The attempt was closed without a charge (the cancel, or the reconciler giving up, found
+        // none), but the charge was still in flight and went through. A decline cannot turn into
+        // a success under the same key, so this money belongs to an order that failed (INV-5).
         markRefundPending(attemptId, chargeId);
         meters.counter("payment.late_charge_refunded").increment();
         return Settlement.REFUND_NEEDED;
@@ -215,18 +219,24 @@ class PaymentLedger {
     };
   }
 
-  /** The provider has no charge for an unsettled attempt: cancel it so it can never charge. */
+  /**
+   * The provider has no charge for an unsettled attempt: cancel it so it can never charge. The
+   * reconciler looks once more later, in case a charge request was still on its way to the provider
+   * and this process dies before its answer is recorded (and refunded).
+   */
   @Transactional
   boolean cancelUnsettled(UUID attemptId) {
+    OffsetDateTime now = now();
     int moved =
         jdbc.sql(
                 """
                 update payment_attempts
                    set status = 'CANCELLED', failure_code = 'cancelled_before_charge',
-                       next_reconcile_at = null, updated_at = :now
+                       next_reconcile_at = :check, updated_at = :now
                  where id = :id and status in ('INITIATED', 'UNKNOWN')
                 """)
-            .param("now", now())
+            .param("check", now.plus(properties.reconcileAfter()))
+            .param("now", now)
             .param("id", attemptId)
             .update();
     if (moved == 1) {
@@ -243,7 +253,8 @@ class PaymentLedger {
                 update payment_attempts
                    set status = 'REFUND_PENDING', provider_charge_id = :charge,
                        next_reconcile_at = null, updated_at = :now
-                 where id = :id and status in ('SUCCEEDED', 'INITIATED', 'UNKNOWN', 'CANCELLED')
+                 where id = :id
+                   and status in ('SUCCEEDED', 'INITIATED', 'UNKNOWN', 'CANCELLED', 'FAILED')
                 """)
             .param("charge", chargeId)
             .param("now", now())
@@ -258,7 +269,8 @@ class PaymentLedger {
         jdbc.sql(
                 """
                 update payment_attempts
-                   set status = 'REFUNDED', provider_refund_id = :refund, updated_at = :now
+                   set status = 'REFUNDED', provider_refund_id = :refund, next_reconcile_at = null,
+                       updated_at = :now
                  where id = :id and status = 'REFUND_PENDING'
                 """)
             .param("refund", refundId)
@@ -270,6 +282,127 @@ class PaymentLedger {
       refunded(find(attemptId), refundId);
     }
   }
+
+  // --- Reconciliation ------------------------------------------------------------------------
+
+  /**
+   * Attempts the reconciler should look at: UNKNOWN ones when their next look is due, INITIATED
+   * ones left behind (by a crash between recording the attempt and recording the provider's answer)
+   * once they are older than any live charge call can be, and closed attempts that get one more
+   * look for a charge that may have landed after they were closed. Also refunds left pending
+   * because the refund call failed: nothing else would retry one that started from a late charge.
+   */
+  private static final String DUE =
+      """
+      (status = 'UNKNOWN' and next_reconcile_at <= :now)
+      or (status in ('INITIATED', 'REFUND_PENDING')
+          and coalesce(next_reconcile_at, updated_at + make_interval(secs => :stale)) <= :now)
+      or (status in ('CANCELLED', 'FAILED') and next_reconcile_at <= :now)
+      """;
+
+  @Transactional(readOnly = true)
+  List<UUID> dueForReconciliation(int limit) {
+    return jdbc.sql(
+            "select id from payment_attempts where "
+                + DUE
+                + " order by coalesce(next_reconcile_at, updated_at) limit :limit")
+        .param("now", now())
+        .param("stale", properties.reconcileStaleInitiated().toSeconds())
+        .param("limit", limit)
+        .query(UUID.class)
+        .list();
+  }
+
+  /**
+   * Takes one due attempt by moving its next look into the future, with backoff. Whoever moves it
+   * owns this look; another reconciler instance (or a second round) finds it no longer due. If the
+   * look then fails or this process dies, the attempt simply comes due again.
+   */
+  @Transactional
+  Optional<Attempt> claimForReconciliation(UUID attemptId) {
+    OffsetDateTime now = now();
+    Optional<Attempt> attempt =
+        jdbc.sql("select * from payment_attempts where id = :id and (" + DUE + ") for update")
+            .param("id", attemptId)
+            .param("now", now)
+            .param("stale", properties.reconcileStaleInitiated().toSeconds())
+            .query(Attempt::map)
+            .optional();
+    attempt.ifPresent(
+        a ->
+            jdbc.sql(
+                    """
+                    update payment_attempts
+                       set reconcile_attempts = reconcile_attempts + 1, next_reconcile_at = :next
+                     where id = :id
+                    """)
+                .param(
+                    "next",
+                    now.plus(
+                        Backoff.fullJitter(
+                            a.reconcileAttempts(),
+                            properties.reconcileAfter(),
+                            properties.reconcileBackoffMax())))
+                .param("id", a.id())
+                .update());
+    return attempt;
+  }
+
+  /**
+   * The provider still has no charge for an attempt whose outcome has been unknown for the whole
+   * reconciliation window: it fails, and the saga releases the stock. One more look is scheduled,
+   * like a cancel's, for a charge that lands after all; it would be refunded.
+   */
+  @Transactional
+  boolean resolveUnresolved(UUID attemptId) {
+    OffsetDateTime now = now();
+    int moved =
+        jdbc.sql(
+                """
+                update payment_attempts
+                   set status = 'FAILED', failure_code = 'timeout_unresolved',
+                       next_reconcile_at = :check, updated_at = :now
+                 where id = :id and status in ('INITIATED', 'UNKNOWN')
+                """)
+            .param("check", now.plus(properties.reconcileAfter()))
+            .param("now", now)
+            .param("id", attemptId)
+            .update();
+    if (moved == 1) {
+      meters.counter("payment.reconciled", "outcome", "UNRESOLVED").increment();
+      failed(find(attemptId), "TIMEOUT_UNRESOLVED");
+    }
+    return moved == 1;
+  }
+
+  /** The last look at a closed attempt found no charge: nothing more to check. */
+  @Transactional
+  void finishLook(UUID attemptId) {
+    jdbc.sql(
+            """
+            update payment_attempts set next_reconcile_at = null
+             where id = :id and status in ('CANCELLED', 'FAILED')
+            """)
+        .param("id", attemptId)
+        .update();
+  }
+
+  /** Attempts whose outcome is still open, and how long the oldest has been open. */
+  @Transactional(readOnly = true)
+  Backlog backlog() {
+    return jdbc.sql(
+            """
+            select count(*) as open,
+                   coalesce(extract(epoch from (:now - min(created_at))), 0) as oldest
+              from payment_attempts
+             where status in ('INITIATED', 'UNKNOWN')
+            """)
+        .param("now", now())
+        .query((rs, n) -> new Backlog(rs.getLong("open"), rs.getDouble("oldest")))
+        .single();
+  }
+
+  record Backlog(long open, double oldestSeconds) {}
 
   @Transactional(readOnly = true)
   Attempt find(UUID attemptId) {

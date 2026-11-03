@@ -35,7 +35,12 @@ public class OrderConfig {
       float breakerFailureRate,
       Duration breakerOpenFor,
       Duration sagaStepTimeout,
-      Duration sagaReconciliationTimeout) {}
+      Duration sagaReconciliationTimeout,
+      Duration sagaSweepInterval,
+      int sagaSweepBatch,
+      int sagaMaxResends,
+      Duration sagaResendBase,
+      Duration sagaResendMax) {}
 
   /** Everything here needs a signed-in user; admin views need the ADMIN role as well. */
   @Bean

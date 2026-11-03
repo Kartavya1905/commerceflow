@@ -288,6 +288,19 @@ public class OutboxPublisher implements SmartLifecycle {
     monitor = Thread.ofVirtual().name("outbox-backlog-monitor").start(this::monitorLoop);
   }
 
+  /**
+   * Below Spring Kafka's listener containers (Integer.MAX_VALUE - 100), so on shutdown the
+   * listeners stop first, finishing their current records, and the publisher still sends what those
+   * records wrote. Both stop before the connection pool closes, which happens only after every
+   * lifecycle bean has stopped.
+   */
+  public static final int PHASE = Integer.MAX_VALUE - 200;
+
+  @Override
+  public int getPhase() {
+    return PHASE;
+  }
+
   /** Lets the round in progress finish, so no acknowledged row is left unmarked by a shutdown. */
   @Override
   public void stop() {

@@ -50,7 +50,7 @@ class SandboxController {
   /** Fault modes for resilience tests, overriding the token behaviour until reset. */
   enum Fault {
     NONE,
-    /** Every charge request fails with 503 before charging. */
+    /** The provider is down: every charge, lookup and refund fails with 503, changing nothing. */
     FAIL_ALL,
     /** Charge, then hold the response past the caller's timeout (lost acknowledgement). */
     CHARGE_THEN_STALL
@@ -98,7 +98,7 @@ class SandboxController {
     }
     Fault mode = fault.get();
     if (mode == Fault.FAIL_ALL || "tok_unknown".equals(request.paymentToken())) {
-      return ResponseEntity.status(503).body(Map.of("error", "provider_unavailable"));
+      return unavailable();
     }
     String status;
     String declineCode = null;
@@ -124,12 +124,18 @@ class SandboxController {
   }
 
   @GetMapping("/v1/charges")
-  Map<String, List<Charge>> lookup(@RequestParam("idempotency_key") String key) {
-    return Map.of("data", findByKey(key).map(List::of).orElse(List.of()));
+  ResponseEntity<?> lookup(@RequestParam("idempotency_key") String key) {
+    if (fault.get() == Fault.FAIL_ALL) {
+      return unavailable();
+    }
+    return ResponseEntity.ok(Map.of("data", findByKey(key).map(List::of).orElse(List.of())));
   }
 
   @GetMapping("/v1/charges/{id}")
-  ResponseEntity<Charge> get(@PathVariable String id) {
+  ResponseEntity<?> get(@PathVariable String id) {
+    if (fault.get() == Fault.FAIL_ALL) {
+      return unavailable();
+    }
     return jdbc.sql("select * from charges where id = ?")
         .param(id)
         .query(SandboxController::map)
@@ -143,6 +149,9 @@ class SandboxController {
   ResponseEntity<?> refund(
       @RequestHeader("Idempotency-Key") @NotBlank String key,
       @Valid @RequestBody RefundRequest request) {
+    if (fault.get() == Fault.FAIL_ALL) {
+      return unavailable();
+    }
     Optional<Map<String, Object>> existing = findRefund(key);
     if (existing.isPresent()) {
       return ResponseEntity.ok(existing.get());
@@ -180,6 +189,10 @@ class SandboxController {
               .update();
           return ResponseEntity.ok(findRefund(key).orElseThrow());
         });
+  }
+
+  private static ResponseEntity<Map<String, String>> unavailable() {
+    return ResponseEntity.status(503).body(Map.of("error", "provider_unavailable"));
   }
 
   @PostMapping("/sandbox/faults")

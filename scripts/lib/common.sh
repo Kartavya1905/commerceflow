@@ -23,8 +23,14 @@ info() {
   echo "==> $*"
 }
 
+CHAOS_FILE="$ROOT/deploy/compose/chaos.yml"
+
+# With COMMERCEFLOW_CHAOS=1 (dev-up.sh --chaos), the chaos override joins the stack: Toxiproxy in
+# front of order-service's database, and fault-injection settings the system tests turn on.
 compose() {
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+  local files=(-f "$COMPOSE_FILE")
+  [[ "${COMMERCEFLOW_CHAOS:-0}" != 1 ]] || files+=(-f "$CHAOS_FILE")
+  docker compose "${files[@]}" --env-file "$ENV_FILE" "$@"
 }
 
 require_docker() {

@@ -111,10 +111,22 @@ class SandboxIT {
 
   @Test
   void faultModesOverrideTheTokenUntilReset() throws Exception {
+    String charged = UUID.randomUUID().toString();
+    String chargeId = charge(charged, "tok_success", 500).body().path("id").asString();
     post("/sandbox/faults", null, "{\"mode\":\"FAIL_ALL\"}");
     String key = UUID.randomUUID().toString();
     assertThat(charge(key, "tok_success", 500).status()).isEqualTo(503);
     assertThat(chargesFor(key)).isZero();
+    // Down means down: lookups and refunds fail too, and the refund changes nothing.
+    assertThat(get("/v1/charges?idempotency_key=" + charged).status()).isEqualTo(503);
+    assertThat(get("/v1/charges/" + chargeId).status()).isEqualTo(503);
+    assertThat(
+            post(
+                    "/v1/refunds",
+                    UUID.randomUUID().toString(),
+                    "{\"chargeId\":\"" + chargeId + "\",\"amountMinor\":500}")
+                .status())
+        .isEqualTo(503);
 
     post("/sandbox/faults", null, "{\"mode\":\"CHARGE_THEN_STALL\"}");
     long started = System.nanoTime();

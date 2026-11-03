@@ -5,6 +5,8 @@
 #   scripts/dev-up.sh --obs          core + OpenTelemetry Collector, Prometheus, Tempo, Loki, Grafana
 #   scripts/dev-up.sh --apps         core + the services (builds their jars first)
 #   scripts/dev-up.sh --obs --apps   everything
+#   scripts/dev-up.sh --apps --chaos the services behind Toxiproxy, with fault injection wired
+#                                    up (off until set) for the failure-recovery system tests
 #
 # First run creates .env from .env.example with random local passwords, and a JWT signing key in
 # the git-ignored secrets/ folder.
@@ -24,8 +26,11 @@ for arg in "$@"; do
       profiles+=(--profile apps)
       with_apps=true
       ;;
+    --chaos)
+      export COMMERCEFLOW_CHAOS=1
+      ;;
     -h | --help)
-      sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown option: $arg (try --help)" ;;
@@ -98,8 +103,10 @@ build_jars() {
   info "Building service jars (tests are run separately with ./mvnw verify)"
   # mvnw is a bash script that hands /c/... classpath entries to the Windows java.exe, which
   # needs Git Bash's path conversion. common.sh turns that off for docker, so undo it here.
+  # forceCreation: a service whose own classes did not change would otherwise keep its old jar,
+  # with the old copies of libraries that did change (and Spring Boot skips repackaging it).
   (cd "$ROOT" && env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ./mvnw -B -ntp -q package \
-    -DskipTests -pl services/identity-service,services/catalog-service,services/order-service,services/inventory-service,services/payment-sandbox,services/payment-service,services/api-gateway -am) ||
+    -DskipTests -Dmaven.jar.forceCreation=true -pl services/identity-service,services/catalog-service,services/order-service,services/inventory-service,services/payment-sandbox,services/payment-service,services/api-gateway -am) ||
     die "the Maven build failed; run ./mvnw package -DskipTests to see why"
 }
 

@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,9 @@ class MessagingTestApp {
     /** Number of upcoming handling attempts that fail before succeeding. */
     static final AtomicInteger FAIL_NEXT = new AtomicInteger();
 
+    /** Number of upcoming attempts that fail as if the database were unreachable. */
+    static final AtomicInteger OUTAGE_NEXT = new AtomicInteger();
+
     static final AtomicInteger ATTEMPTS = new AtomicInteger();
 
     private final InboundEvents inbound;
@@ -41,6 +45,9 @@ class MessagingTestApp {
           "test-consumer",
           event -> {
             ATTEMPTS.incrementAndGet();
+            if (OUTAGE_NEXT.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
+              throw new DataAccessResourceFailureException("injected: database unreachable");
+            }
             UUID orderId = event.uuid("orderId");
             // Write first, then fail: proves the failed attempt's write is rolled back.
             jdbc.sql("insert into applied_events (event_id, order_id) values (:e, :o)")

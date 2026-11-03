@@ -119,7 +119,32 @@ Found during this milestone:
 
 Not done yet, deliberately: the deadline sweeper (re-sends, then compensation) and the payment reconciler are Milestone 7. Until then, an order whose payment is UNKNOWN stays PAYMENT_PROCESSING with its stock held, and a lost answer is not re-requested.
 
-## Milestones 7–12
+## Milestone 7 — Failure recovery, retries, reconciliation
+
+- [x] Retries: full jitter in the Kafka error handler, the sweeper and the reconciler. An unreachable database (including a failed rollback on a dead connection) is retried without limit, so an outage parks nothing in a dead-letter topic. A consumer fault-injection switch (delay, failure rate) is off by default (ADR-0012)
+- [x] Saga deadline sweeper: every 5 s, `SKIP LOCKED`. Re-sends the step's command (OrderCreated rebuilt from the saved order) up to 5 times, then compensates. Steps with no safe way out keep re-sending and count as stuck. Reconciliation cancels at its 30-minute deadline. Stored command reasons (V4)
+- [x] Payment reconciler: asks the provider by idempotency key about `UNKNOWN`, stale `INITIATED` and `REFUND_PENDING` attempts. A charge found is recorded through the same guarded updates as the charge path. No charge within 15 minutes means `TIMEOUT_UNRESOLVED`. Attempts closed without a charge get one later look, and a charge that landed late is refunded
+- [x] Dead letters: `GET /api/v1/admin/dlt/{topic}` and `POST …/replay` (admins only, audited, `*.dlt` topics only). A replay goes back through the normal consumer and its dedupe. `scripts/replay-dlt.sh` (list, replay, replay-all)
+- [x] Shutdown: listeners stop, then the outbox publisher, then the connection pool. Compose `stop_grace_period: 40s`. payment-sandbox drains gracefully too
+- [x] HTTP: a lost database is `503` with `Retry-After`, never `500`. The gateway re-resolves service addresses every 5 s instead of trusting Docker's 600 s DNS TTL
+- [x] Alerts: `SagaStuck`, `SagaSweepFailing`, `PaymentReconciliationOverdue`, `LateChargeRefunded`, `FaultInjectionOn` (promtool: 11 rules)
+- [x] `system-tests` module (`-Psystem-tests`), `deploy/compose/chaos.yml` (Toxiproxy in front of order-service's database, chaos variables), `scripts/dev-up.sh --chaos`, `scripts/system-test.sh`. Nine scenarios, each ending with INV-1..INV-6 checked in the databases
+- [x] All nine scenarios pass 5 consecutive runs (45 of 45, 0 invariant violations, 2026-11-03); numbers in [failure-recovery.md](reports/failure-recovery.md), raw results in [reports/data/](reports/data/failure-recovery-2026-11-03.jsonl)
+- [x] Tests: saga table 129 (now including the deadline transitions and the sweeper always having a move); order-service integration 44 (sweeper 9, dead-letter replay 3); payment-service 26 against the real sandbox (reconciler 11); messaging 23 (backoff, outage detection including a failed rollback, chaos, outage retried past the limit, shutdown order); web-common 2 (503 mapping); gateway: the DNS cache cap, and the dead-letter route in GatewayIT. 497 in the build (448 after Milestone 6). `check-infra`: 144 checks, now including the reconciler confirming a `tok_timeout` order
+- [x] Mutation checks: 11 of 11 caught (no jitter, never giving up, unguarded settle, sweeping without the row lock, replay bypassing dedupe, publisher stopping first, outage dead-lettered, late charge on a failed attempt kept, no look after a cancel, pending refund never retried, never resolving as unresolved)
+- [ ] CI green on GitHub
+- [ ] Tag `m7-done`
+
+Found during this milestone:
+- A system-test error message echoed the sandbox API key, which went to local logs only. The fault switch now goes in on stdin and reads the key inside the container, failures are redacted, and the logs were deleted.
+- With the database cut, order placement answered `500`, not `503`. The mapping covered missing connections, but not a statement that failed mid-request followed by a rollback on the same dead connection, whose exception hid the first. Both HTTP and the consumers' outage check now recognise it. Without the fix, a consumer would have dead-lettered messages during an outage.
+- The gateway kept sending requests to a recreated container's old address for up to 10 minutes (Netty caches DNS for Docker's 600 s TTL). Capped at 5 s.
+- `dev-up` could ship a service with stale libraries: Maven does not re-create a jar whose own classes did not change, and Spring Boot then skips repackaging it. The build now forces jar creation.
+- The sandbox's `FAIL_ALL` fault failed charges but not lookups or refunds, so "provider down" was not down. A refund whose call failed stayed `REFUND_PENDING` with nothing to retry it. The outbox publisher stopped before the listeners on shutdown, so their last events waited for the next start.
+- The replay check proved only that lag returned to zero. It now also waits until the consumers have handled as many records as were replayed. Replaying "everything from offset 0" also replayed earlier replays, so the topics doubled every run: 95 k, then 199 k, 413 k and 856 k records, until the fifth run could not finish in 5 minutes. No record was applied twice at any size, but a test that grows without bound proves nothing about the next run. The scenario now replays every original record of its run, from the offsets the run started at, and marks its copies so they are never replayed again.
+- Stopping a system-test run by its script or Maven left the forked test JVM running. It overlapped the next run and invalidated it. The runbook now says how to stop one, and only runs from a clean start count.
+
+## Milestones 8–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

@@ -56,16 +56,22 @@ Alert `DeadLetterMessages`: a message failed every retry, or could never be proc
    `C exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:29092 --topic order.events.v1.dlt --from-beginning --property print.headers=true --property print.key=true --max-messages 5`
    The `kafka_dlt-exception-message` header says why.
 2. Fix the cause (a bug, or a broken dependency that is now back).
-3. Replay tooling arrives in Milestone 7. Until then, a message can be re-sent to its original topic by hand; consumers are idempotent, so replaying something already applied is harmless.
+   Or list it through the admin API: `scripts/replay-dlt.sh list order.events.v1.dlt` shows each record's key, event id and type, original topic and failure.
+3. Replay it: `scripts/replay-dlt.sh replay <dlt-topic> <partition> <offset>`, or `replay-all <dlt-topic>`. A replay puts the record back on its original topic unchanged, so the normal consumer handles it with its retries and dedupe. Replaying twice, or replaying something that was meanwhile applied, changes nothing. Each replay is audited (`DLT_REPLAYED`).
+4. Usually nothing is lost even without a replay: the saga sweeper re-sends the command of any step whose answer is late, so a parked answer is asked for again. A replay just gets there sooner.
+5. A database outage never parks messages: consumers retry until the database is back (the partition waits, in order), so after an outage there should be nothing here.
 
 ## An order is stuck in checkout
 
 An order stays `PENDING` or `PAYMENT_PROCESSING`. The saga knows why:
 
-1. `GET /api/v1/admin/sagas?stuck=true` (admin token, through the gateway) lists sagas past their deadline. `state` names the step it is waiting on.
-2. In `AWAITING_RECONCILIATION`, the payment's outcome is unknown (provider timeout or error), and `GET /api/v1/admin/payments?orderId=<id>` shows the attempt as `UNKNOWN`. This is deliberate. The charge may have happened, so the stock stays held until the outcome is known. The reconciler that resolves it arrives in Milestone 7. Never fail such an order by hand: it may have been paid for.
-3. In any other waiting state, the answer it is waiting for has not arrived. Check the answering service is healthy and its outbox is draining ("Outbox backlog stuck" above), and that nothing for the order is in a dead-letter topic.
-4. Until the sweeper (Milestone 7), a lost answer is not re-requested automatically. Do not edit `saga_instances` or `orders` by hand. The saga's row lock and guarded updates are what keep stock, money and status in step.
+Most of the time nothing needs doing. The deadline sweeper (every 5 s) re-sends a late step's command up to 5 times, waiting a random, growing time between re-sends. Then it compensates: an order waiting for its reservation or its payment is released (and its payment cancelled), and fails. Alert `SagaStuck` fires only for a saga past its last re-send in a step with no safe way out: committing paid stock, releasing stock, or refunding.
+
+1. `GET /api/v1/admin/sagas?stuck=true` (admin token, through the gateway) lists sagas past their deadline. `state` names the step it is waiting on, and `stepAttempts` how many re-sends it has had.
+2. In `AWAITING_RECONCILIATION`, the payment's outcome is unknown (provider timeout or error), and `GET /api/v1/admin/payments?orderId=<id>` shows the attempt as `UNKNOWN`. The reconciler resolves it from the provider's records (see "Payments"). Never fail such an order by hand: it may have been paid for. If it is still unknown after 30 minutes, the saga cancels the payment, which refunds a charge it finds.
+3. In any other waiting state, the answer it is waiting for has not arrived. Check the answering service is healthy and its outbox is draining ("Outbox backlog stuck" above), and whether anything for the order is in a dead-letter topic ("Dead-letter messages").
+4. Do not edit `saga_instances` or `orders` by hand. The saga's row lock and guarded updates are what keep stock, money and status in step. The sweeper takes the same row lock, so it never acts on a saga while an event is being applied to it.
+5. `SagaSweepFailing`: sweeping one saga threw (its log line names the order and the cause) and was rolled back. The others are still swept.
 
 ## Payments
 
@@ -73,6 +79,20 @@ An order stays `PENDING` or `PAYMENT_PROCESSING`. The saga knows why:
 - `UNKNOWN`: the provider did not answer usably. `REFUND_PENDING`: money was taken for an order that is being cancelled, and the refund is in progress (retried with the same key until it succeeds).
 - payment-service logs `Charge for attempt … unresolved (PROVIDER_TIMEOUT)` for each timeout. Many in a row usually mean the sandbox is down or a fault is switched on. Reset it from inside the network (payment-service's container has the key): `C --profile apps exec payment-service sh -c 'curl -s -X POST -H "Authorization: Bearer $SANDBOX_API_KEY" -H "Content-Type: application/json" -d "{\"mode\":\"NONE\"}" http://payment-sandbox:8099/sandbox/faults'`.
 - Test tokens: `tok_success`, `tok_decline`, `tok_insufficient`, `tok_timeout` (charges, then answers too late), `tok_unknown` (fails without charging).
+- The reconciler (every 10 s) asks the provider, by idempotency key, about `UNKNOWN` attempts, `INITIATED` ones older than 30 s (left by a crash), and `REFUND_PENDING` ones whose refund call failed. A charge it finds is recorded exactly as if the call had answered. With no charge for 15 minutes, the attempt fails (`TIMEOUT_UNRESOLVED`) and the stock is released. Attempts closed without a charge get one later look, and a charge that landed after all is refunded (alert `LateChargeRefunded`).
+- `PaymentReconciliationOverdue`: an outcome has been unknown for over 15 minutes, so the provider cannot be asked. Check the sandbox is up and not in a fault mode (above). `payment.reconcile.provider_unavailable` counts the failed lookups.
+
+## Fault injection
+
+Alert `FaultInjectionOn`: a service is failing consumer records on purpose. That is the failure-recovery tests' switch, `commerceflow.messaging.chaos.*`, which `deploy/compose/chaos.yml` wires to `CHAOS_CONSUMER_DELAY` and `CHAOS_CONSUMER_FAILURE_RATE`. It must never be on outside a test. Recreate the services without those variables: `COMMERCEFLOW_CHAOS=1 scripts/dev-up.sh --apps --chaos`, from a shell where neither is set.
+
+## Running the failure-recovery tests
+
+1. `scripts/dev-up.sh --apps --chaos` starts the stack with Toxiproxy in front of order-service's database. Nothing is broken until a test does it.
+2. `scripts/system-test.sh 5` runs every scenario five times. It kills containers, stops Kafka, cuts the database link and injects faults, so do not use the stack meanwhile.
+3. Results are in `system-tests/target/failure-recovery/results.jsonl`, one line per scenario and run. `docs/reports/failure-recovery.md` is written from them.
+4. If a run is interrupted, put things back: `scripts/dev-up.sh --apps --chaos` restarts anything stopped and recreates the services with fault injection off. The sandbox fault and the Toxiproxy link are reset by the next run's setup.
+5. To stop a run, stop the test JVM too, not only the script and Maven. Failsafe forks it (`surefirebooter-*.jar`), and it outlives its parent and keeps killing containers. Two runs at once against one stack produce failures that mean nothing. On Windows, find it with `Get-CimInstance Win32_Process -Filter "name='java.exe'"` and check its parent is the system-tests Maven process before stopping it. Then reset as in step 4 and count runs from 1 again.
 
 ## Consumer lag growing
 

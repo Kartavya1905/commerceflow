@@ -5,6 +5,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -12,17 +14,20 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.util.backoff.ExponentialBackOff;
+import org.springframework.util.backoff.BackOff;
 
 @AutoConfiguration
 @EnableConfigurationProperties(MessagingProperties.class)
 public class MessagingAutoConfiguration {
+
+  private static final Logger log = LoggerFactory.getLogger(MessagingAutoConfiguration.class);
 
   @Bean
   @ConditionalOnMissingBean
@@ -57,8 +62,21 @@ public class MessagingAutoConfiguration {
 
   @Bean
   InboundEvents inboundEvents(
-      JdbcClient jdbc, TransactionTemplate tx, ObjectProvider<MeterRegistry> meters) {
-    return new InboundEvents(jdbc, tx, registry(meters));
+      JdbcClient jdbc,
+      TransactionTemplate tx,
+      MessagingProperties properties,
+      ObjectProvider<MeterRegistry> meters) {
+    if (properties.chaos().active()) {
+      log.warn("Fault injection is ON for every consumer: {}", properties.chaos());
+    }
+    return new InboundEvents(jdbc, tx, registry(meters), properties.chaos());
+  }
+
+  @Bean
+  @SuppressWarnings("unchecked")
+  DeadLetters deadLetters(ConsumerFactory<?, ?> consumers, KafkaTemplate<?, ?> kafka) {
+    return new DeadLetters(
+        (ConsumerFactory<String, String>) consumers, (KafkaTemplate<String, String>) kafka);
   }
 
   /** Services get a registry from Actuator; without one, metrics are kept in memory only. */
@@ -67,9 +85,11 @@ public class MessagingAutoConfiguration {
   }
 
   /**
-   * Blocking retries on the same partition (ADR-0007): exponential backoff with jitter, a bounded
-   * number of attempts, then the record goes to {@code <topic>.dlt} on the same partition number.
-   * Poison messages skip the retries. Spring Boot attaches this handler to every listener.
+   * Blocking retries on the same partition (ADR-0007): exponential backoff with full jitter, a
+   * bounded number of attempts, then the record goes to {@code <topic>.dlt} on the same partition
+   * number. Poison messages skip the retries. An unreachable database is not the message's fault:
+   * those retries go on until it is back (the partition waits, in order), so an outage parks
+   * nothing in the dead-letter topic. Spring Boot attaches this handler to every listener.
    */
   @Bean
   CommonErrorHandler kafkaErrorHandler(
@@ -77,11 +97,15 @@ public class MessagingAutoConfiguration {
     DeadLetterPublishingRecoverer toDeadLetter =
         new DeadLetterPublishingRecoverer(
             kafka, (record, e) -> new TopicPartition(record.topic() + ".dlt", record.partition()));
-    ExponentialBackOff backOff = new ExponentialBackOff(properties.retryInitial().toMillis(), 2.0);
-    backOff.setMaxInterval(properties.retryMax().toMillis());
-    backOff.setJitter(properties.retryInitial().toMillis() / 2);
-    backOff.setMaxAttempts(Math.max(0, properties.retryAttempts() - 1));
-    DefaultErrorHandler handler = new DefaultErrorHandler(toDeadLetter, backOff);
+    DefaultErrorHandler handler =
+        new DefaultErrorHandler(
+            toDeadLetter,
+            Backoff.retries(
+                properties.retryInitial(),
+                properties.retryMax(),
+                Math.max(0, properties.retryAttempts() - 1)));
+    BackOff untilBack = Backoff.retries(properties.retryInitial(), properties.outageRetryMax(), -1);
+    handler.setBackOffFunction((record, e) -> Outages.isOutage(e) ? untilBack : null);
     handler.addNotRetryableExceptions(PoisonMessageException.class);
     return handler;
   }

@@ -11,6 +11,9 @@ name: commerceflow
 
 x-restart: &restart
   restart: unless-stopped
+  # Docker's default is 10 s, then SIGKILL. Services drain in-flight requests and Kafka records
+  # for up to 30 s (spring.lifecycle.timeout-per-shutdown-phase), so give them that and a margin.
+  stop_grace_period: 40s
 
 services:
   # --- Core: data stores and messaging -------------------------------------------------------

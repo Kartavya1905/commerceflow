@@ -11,8 +11,9 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -131,28 +132,27 @@ public final class SandboxProcess {
 
   private static void awaitHealthy(String baseUrl, Process process, Path log) throws IOException {
     HttpClient client = HttpClient.newHttpClient();
-    Instant deadline = Instant.now().plusSeconds(90);
-    while (Instant.now().isBefore(deadline)) {
-      if (!process.isAlive()) {
-        throw new IllegalStateException("payment-sandbox exited:\n" + Files.readString(log));
-      }
-      try {
-        HttpRequest health =
-            HttpRequest.newBuilder(URI.create(baseUrl + "/actuator/health/readiness")).build();
-        if (client.send(health, HttpResponse.BodyHandlers.discarding()).statusCode() == 200) {
-          return;
-        }
-      } catch (IOException notYet) {
-        // Not listening yet.
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException(e);
-      }
-      sleep(250);
+    HttpRequest health =
+        HttpRequest.newBuilder(URI.create(baseUrl + "/actuator/health/readiness")).build();
+    try {
+      Awaitility.await()
+          .atMost(Duration.ofSeconds(90))
+          .pollInterval(Duration.ofMillis(250))
+          .ignoreExceptionsInstanceOf(IOException.class) // not listening yet
+          .until(
+              () -> {
+                if (!process.isAlive()) {
+                  throw new IllegalStateException(
+                      "payment-sandbox exited:\n" + Files.readString(log));
+                }
+                return client.send(health, HttpResponse.BodyHandlers.discarding()).statusCode()
+                    == 200;
+              });
+    } catch (ConditionTimeoutException e) {
+      process.destroy();
+      throw new IllegalStateException(
+          "payment-sandbox never became ready:\n" + Files.readString(log), e);
     }
-    process.destroy();
-    throw new IllegalStateException(
-        "payment-sandbox never became ready:\n" + Files.readString(log));
   }
 
   private static int freePort() {
@@ -160,14 +160,6 @@ public final class SandboxProcess {
       return socket.getLocalPort();
     } catch (IOException e) {
       throw new IllegalStateException(e);
-    }
-  }
-
-  private static void sleep(long millis) {
-    try {
-      Thread.sleep(millis);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     }
   }
 }

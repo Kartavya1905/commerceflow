@@ -1,10 +1,12 @@
 package dev.commerceflow.web;
 
 import java.net.URI;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -13,6 +15,8 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionSystemException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -47,12 +51,60 @@ public class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
   }
 
   /**
+   * A data store is unreachable (ARCHITECTURE.md E.4, "Postgres down"): 503 with Retry-After, not a
+   * 500. Nothing was committed, so retrying the same request (with the same Idempotency-Key) is
+   * safe once it is back.
+   */
+  @ExceptionHandler({
+    DataAccessResourceFailureException.class,
+    CannotCreateTransactionException.class
+  })
+  ResponseEntity<Object> handleUnavailable(RuntimeException e, WebRequest request) {
+    log.warn("Data store unavailable: {}", e.getMessage());
+    ProblemDetail problem =
+        problem(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Service unavailable",
+            "A dependency is unavailable. Nothing was changed; try again shortly.");
+    HttpHeaders headers = new HttpHeaders();
+    headers.set(HttpHeaders.RETRY_AFTER, "5");
+    return handleExceptionInternal(e, problem, headers, HttpStatus.SERVICE_UNAVAILABLE, request);
+  }
+
+  /**
    * Spring Security decides 401 and 403. Re-throwing hands these back to its filter chain instead
    * of letting the catch-all below turn an authorisation failure into a 500.
    */
   @ExceptionHandler({AccessDeniedException.class, AuthenticationException.class})
   void rethrowSecurity(RuntimeException e) {
     throw e;
+  }
+
+  /**
+   * A connection that breaks mid-transaction fails twice: the statement, then the rollback on the
+   * same dead connection, whose exception hides the first. That is still the database being
+   * unreachable, not a bug. Same rule as libs/messaging's Outages, for consumers.
+   */
+  @ExceptionHandler(TransactionSystemException.class)
+  ResponseEntity<Object> handleTransactionFailure(
+      TransactionSystemException e, WebRequest request) {
+    return connectionLost(e) ? handleUnavailable(e, request) : handleUnexpected(e, request);
+  }
+
+  static boolean connectionLost(TransactionSystemException e) {
+    for (Throwable t : new Throwable[] {e.getOriginalException(), e.getCause()}) {
+      for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
+        if (c instanceof DataAccessResourceFailureException
+            || c instanceof CannotCreateTransactionException
+            || (c instanceof SQLException sql
+                && sql.getSQLState() != null
+                && sql.getSQLState().startsWith("08"))) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   @ExceptionHandler(Exception.class)

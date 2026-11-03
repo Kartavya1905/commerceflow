@@ -11,9 +11,12 @@ spring:
     hikari:
       maximum-pool-size: 10
       connection-timeout: 3000
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
   port: ${PORT:8099}
+  shutdown: graceful
   error:
     include-message: never
     include-stacktrace: never

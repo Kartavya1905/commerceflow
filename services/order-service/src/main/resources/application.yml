@@ -88,7 +88,16 @@ commerceflow:
     breaker-minimum-calls: 5
     breaker-failure-rate: 50
     breaker-open-for: 10s
-    # How long the saga waits for each step's answer before the sweeper (Milestone 7) re-sends
-    # its command, and then compensates. Reconciling an unknown payment gets longer.
+    # How long the saga waits for each step's answer before the deadline sweeper re-sends its
+    # command. Reconciling an unknown payment gets longer: payment-service resolves it well
+    # within this (commerceflow.payment.reconcile-window), so this is only a backstop.
     saga-step-timeout: 2m
     saga-reconciliation-timeout: 30m
+    # The sweeper looks for overdue sagas this often, takes up to this many per round, and
+    # re-sends a step's command this many times, waiting a random time between zero and
+    # base * 2^n (capped) between re-sends, before it compensates.
+    saga-sweep-interval: 5s
+    saga-sweep-batch: 100
+    saga-max-resends: 5
+    saga-resend-base: 10s
+    saga-resend-max: 2m

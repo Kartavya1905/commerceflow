@@ -398,6 +398,12 @@ if container_running api-gateway; then
   order_is "$timed_out" PAYMENT_PROCESSING && available 2 &&
     pass "and the order waits for reconciliation instead of failing (stock still held)" ||
     fail "the timed-out order is $(order_status "$timed_out")"
+  # Milestone 7: the reconciler asks the provider, finds the charge, and the order completes.
+  if eventually 120 order_is "$timed_out" CONFIRMED; then pass "the reconciler found the charge: the order is CONFIRMED"
+  else fail "the timed-out order is $(order_status "$timed_out") after reconciliation"; fi
+  [[ "$(payments_for "$timed_out")" == *'"status":"SUCCEEDED"'* ]] &&
+    pass "its payment was settled from the provider's record, not charged again" ||
+    fail "reconciled payment: $(payments_for "$timed_out")"
   code=$(http_status -H "Authorization: Bearer $admin" "$gw/api/v1/admin/sagas")
   [[ "$code" == 200 ]] && pass "an admin can list sagas" || fail "/admin/sagas returned $code"
   code=$(http_status -H "Authorization: Bearer $customer" "$gw/api/v1/admin/payments")

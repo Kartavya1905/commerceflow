@@ -1,5 +1,5 @@
-# Infrastructure alerts. Business alerts (outbox age, stuck sagas, reconciliation backlog, DLT
-# messages) are added with the features that emit their metrics, in Milestones 5-9.
+# Infrastructure and recovery alerts. Outbox age and dead letters arrived with Milestone 5, the
+# saga, reconciliation and fault-injection alerts with Milestone 7.
 groups:
   - name: infrastructure
     rules:
@@ -57,3 +57,53 @@ groups:
         annotations:
           summary: "order.events.v1 does not exist; kafka-init may have failed"
           runbook: docs/runbooks/infra.md#kafka-topic-missing
+
+  - name: recovery
+    rules:
+      - alert: SagaStuck
+        # Out of re-sends in a step with no safe way out (committing, releasing or refunding).
+        # The sweeper keeps re-sending; a person has to find out why nothing answers.
+        expr: max by (service) (saga_stuck) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} checkout saga(s) stuck past their last re-send"
+          runbook: docs/runbooks/infra.md#an-order-is-stuck-in-checkout
+
+      - alert: SagaSweepFailing
+        expr: sum by (service) (increase(saga_sweep_errors_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "The saga sweeper failed to sweep a saga in the last 10 minutes"
+          runbook: docs/runbooks/infra.md#an-order-is-stuck-in-checkout
+
+      - alert: PaymentReconciliationOverdue
+        # Outcomes should be known within the reconciliation window (15 min). Older ones mean the
+        # provider cannot be asked, or the reconciler is not running.
+        expr: max by (service) (payment_reconciliation_oldest_age_seconds) > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A payment outcome has been unknown for over 15 minutes"
+          runbook: docs/runbooks/infra.md#payments
+
+      - alert: LateChargeRefunded
+        # Correct behaviour, but each one is a customer who was charged and refunded.
+        expr: sum (increase(payment_late_charge_refunded_total[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A charge landed after its order failed and was refunded"
+          runbook: docs/runbooks/infra.md#payments
+
+      - alert: FaultInjectionOn
+        # The failure-recovery tests' chaos switch; it must never stay on outside them.
+        expr: sum by (service) (increase(messaging_chaos_failures_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} is injecting consumer failures on purpose"
+          runbook: docs/runbooks/infra.md#fault-injection

@@ -275,6 +275,7 @@ stateDiagram-v2
 
     AWAITING_RECONCILIATION --> AWAITING_COMMIT: PaymentSucceeded
     AWAITING_RECONCILIATION --> RELEASING_INVENTORY: PaymentFailed
+    AWAITING_RECONCILIATION --> CANCELLING_PAYMENT: deadline exceeded / send CancelPayment
 
     CANCELLING_PAYMENT --> RELEASING_INVENTORY: PaymentFailed (any reason) or PaymentRefunded
 
@@ -293,7 +294,7 @@ Rules the implementation must follow:
 
 1. **One transaction per transition.** Load the saga row `FOR UPDATE`, check the event is valid for the current state, apply the transition, update the order, write the next command or event to the outbox, insert into `processed_events`, commit. Kafka offset is committed only after that.
 2. **Invalid-for-state events are acknowledged and ignored**, with a counter metric `saga_event_ignored_total{reason}`. A duplicate `InventoryReserved` arriving in `AWAITING_COMMIT` is ignored, never re-applied.
-3. **Deadlines.** Each waiting state sets `deadline_at`. A sweeper (`SELECT … FOR UPDATE SKIP LOCKED`) re-sends the current step's command with exponential backoff and jitter, up to `max_attempts` (default 5). Re-sends are safe because receivers are idempotent by `orderId`.
+3. **Deadlines.** Each waiting state sets `deadline_at`. A sweeper (`SELECT … FOR UPDATE SKIP LOCKED`) re-sends the current step's command with exponential backoff and full jitter, up to `max_attempts` (default 5), then takes the state's deadline transition if it has one. Re-sends are safe because receivers are idempotent by `orderId`. A step with no deadline transition (committing, releasing, refunding) is itself the way out, so it keeps being re-sent and raises the `SagaStuck` alert. Reconciliation has no command to re-send: at its (long) deadline the saga cancels the payment.
 4. **Fail-safe compensation.** When the outcome of a step is unknown after the last attempt, the saga issues the compensating command anyway (`ReleaseInventory`, `CancelPayment`); both are no-ops if nothing happened.
 5. **`CancelPayment` leaves a tombstone.** If payment-service has no attempt for the order, it inserts one with status `CANCELLED`. A late `AuthorizePayment` then hits `UNIQUE(order_id)` and is answered with `PaymentFailed(CANCELLED)` instead of charging. This closes the race between "saga gave up" and "command finally arrived".
 6. **Reservations are not expired by inventory while a saga can still use them.** Inventory has only a long-stop expiry (default 24 h) that raises an alert; normal release is always driven by the saga. This avoids "payment succeeded but the stock was already released".
@@ -441,7 +442,7 @@ The machine-readable version of this table is `contracts/src/main/resources/even
 | `max.in.flight.requests.per.connection` | ≤ 5 | Required for idempotence to preserve order |
 | Consumer `enable.auto.commit` | `false`; listener ack mode `RECORD` | Offset moves only after the DB transaction commits |
 | Consumer `isolation.level` | `read_committed` | Harmless now; correct if Kafka transactions are added later |
-| Error handling | Spring Kafka `DefaultErrorHandler`: exponential backoff 200 ms → 10 s with jitter, 6 attempts, then `DeadLetterPublishingRecoverer` to `<topic>.dlt` | Bounded retries; poison messages leave the partition |
+| Error handling | Spring Kafka `DefaultErrorHandler`: exponential backoff 200 ms → 10 s with full jitter, 6 attempts, then `DeadLetterPublishingRecoverer` to `<topic>.dlt`. An unreachable database is retried without limit (backoff capped at 30 s) | Bounded retries; poison messages leave the partition. An outage is not the message's fault, so it parks nothing |
 | Non-retryable | Schema-validation and deserialisation errors go straight to the DLT | Retrying cannot fix a malformed message |
 | Retry style | **Blocking** retries on the partition (not `@RetryableTopic`) | Non-blocking retry topics would let later messages for the same order overtake a failing one |
 | Shutdown | `spring.lifecycle.timeout-per-shutdown-phase=30s`; container stops polling, finishes the current record, commits | No half-processed records on deploy |
@@ -689,7 +690,7 @@ Default isolation is `READ COMMITTED` in every service. `SERIALIZABLE` was consi
 | Outbox cleanup | all producers | hourly | Delete rows published more than 7 days ago |
 | Processed-events cleanup | all consumers | daily | Delete rows older than 14 days |
 | Saga deadline sweeper | order | every 5 s | Re-send or compensate overdue sagas |
-| Payment reconciler | payment | every 10 s | Resolve `UNKNOWN` and stale `INITIATED` attempts |
+| Payment reconciler | payment | every 10 s | Resolve `UNKNOWN` and stale `INITIATED` attempts; retry pending refunds; look once more at attempts closed without a charge, and refund a charge that landed late |
 | Reservation long-stop | inventory | every minute | Expire reservations older than 24 h, emit metric and alert (should never fire) |
 | Notification retry | notification | every 10 s | Retry `RETRYING` deliveries with backoff; mark `DEAD` after 8 attempts |
 | Refresh-token cleanup | identity | daily | Delete expired tokens |

@@ -27,6 +27,8 @@ public abstract class PaymentTestBase {
     registry.add("commerceflow.payment.provider-read-timeout", () -> "1s");
     // Timeouts are provoked on purpose here; the breaker must not open and skew later tests.
     registry.add("commerceflow.payment.breaker-minimum-calls", () -> "1000");
+    // Tests run reconciliation rounds themselves, so the scheduled one must not get there first.
+    registry.add("commerceflow.payment.reconcile-interval", () -> "1h");
   }
 
   @AfterEach

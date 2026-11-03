@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -41,11 +42,14 @@ class OutboxAndInboxIT {
   @Autowired KafkaContainer kafkaContainer;
   @Autowired MeterRegistry meters;
   @Autowired OutboxPublisher publisher;
+  @Autowired KafkaListenerEndpointRegistry registry;
+  @Autowired DeadLetters parked;
 
   @BeforeEach
   void reset() {
     TestListener.ALWAYS_FAIL.clear();
     TestListener.FAIL_NEXT.set(0);
+    TestListener.OUTAGE_NEXT.set(0);
   }
 
   // --- Writing -------------------------------------------------------------------------------
@@ -121,6 +125,36 @@ class OutboxAndInboxIT {
     await().atMost(WAIT).until(() -> appliedFor(order).size() == 1);
     // The two failed attempts also inserted a row each, and both were rolled back.
     assertThat(appliedFor(order)).hasSize(1);
+  }
+
+  /**
+   * More database failures than the retry limit (3 attempts here): a processing failure would be
+   * dead-lettered by now, but an outage is retried until the database answers, then applied.
+   */
+  @Test
+  void aDatabaseOutageIsRetriedPastTheLimitAndNeverDeadLettered() {
+    UUID order = UUID.randomUUID();
+    TestListener.OUTAGE_NEXT.set(6);
+    tx.executeWithoutResult(s -> outbox.append("OrderCreated", "Order", order, payload(order)));
+
+    await().atMost(WAIT).until(() -> appliedFor(order).size() == 1);
+    assertThat(TestListener.OUTAGE_NEXT.get()).isZero();
+    List<DeadLetters.Entry> nowParked;
+    try {
+      nowParked = parked.list("order.events.v1.dlt", 500);
+    } catch (DeadLetters.UnknownTopicException nothingEverParked) {
+      nowParked = List.of();
+    }
+    assertThat(nowParked).noneMatch(entry -> order.toString().equals(entry.key()));
+  }
+
+  /** On shutdown the listeners stop first, then the publisher sends what they wrote. */
+  @Test
+  void thePublisherStopsAfterTheListeners() {
+    assertThat(registry.getListenerContainers()).isNotEmpty();
+    registry
+        .getListenerContainers()
+        .forEach(container -> assertThat(publisher.getPhase()).isLessThan(container.getPhase()));
   }
 
   @Test

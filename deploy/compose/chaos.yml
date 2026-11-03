@@ -1,0 +1,46 @@
+# Failure-recovery override, for the system tests (system-tests/, docs/reports/failure-recovery.md).
+#
+#   scripts/dev-up.sh --apps --chaos
+#
+# Puts Toxiproxy between order-service and Postgres, so a test can cut that link without stopping
+# the database for everyone, and wires the consumers' fault injection to CHAOS_* variables. Both
+# do nothing until a test switches them on: the proxy passes traffic through, and the chaos
+# settings default to off. Never use this file outside testing.
+
+services:
+  toxiproxy:
+    profiles: [apps]
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./toxiproxy/toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "127.0.0.1:8474:8474"   # control API, for the tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+
+  order-service:
+    environment:
+      ORDER_DB_URL: jdbc:postgresql://toxiproxy:15432/order_db
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERDELAY: ${CHAOS_CONSUMER_DELAY:-0ms}
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERFAILURERATE: ${CHAOS_CONSUMER_FAILURE_RATE:-0}
+      # With a delay on every record, a large poll could outlast max.poll.interval.ms.
+      SPRING_KAFKA_CONSUMER_MAXPOLLRECORDS: 20
+    depends_on:
+      toxiproxy:
+        condition: service_started
+
+  inventory-service:
+    environment:
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERDELAY: ${CHAOS_CONSUMER_DELAY:-0ms}
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERFAILURERATE: ${CHAOS_CONSUMER_FAILURE_RATE:-0}
+      SPRING_KAFKA_CONSUMER_MAXPOLLRECORDS: 20
+
+  payment-service:
+    environment:
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERDELAY: ${CHAOS_CONSUMER_DELAY:-0ms}
+      COMMERCEFLOW_MESSAGING_CHAOS_CONSUMERFAILURERATE: ${CHAOS_CONSUMER_FAILURE_RATE:-0}
+      SPRING_KAFKA_CONSUMER_MAXPOLLRECORDS: 20

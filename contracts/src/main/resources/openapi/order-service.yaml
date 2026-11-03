@@ -183,6 +183,73 @@ paths:
                     items: { $ref: '#/components/schemas/Saga' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/admin/dlt/{topic}:
+    get:
+      operationId: adminListDeadLetters
+      summary: Records parked in a dead-letter topic, oldest first (admin)
+      description: >-
+        Any service's dead-letter topic can be read here; reading changes nothing. Only topics named
+        <domain>.<kind>.v<N>.dlt are accepted.
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/DeadLetterTopic'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        '200':
+          description: Parked records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeadLetter' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/admin/dlt/{topic}/replay:
+    post:
+      operationId: adminReplayDeadLetter
+      summary: Put one parked record back on its original topic, unchanged (admin)
+      description: >-
+        The record keeps its event id, so its consumer's dedupe applies: replaying twice, or
+        replaying something already applied, changes nothing. Every replay is audited.
+      x-required-role: ADMIN
+      parameters:
+        - $ref: '#/components/parameters/DeadLetterTopic'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [partition, offset]
+              additionalProperties: false
+              properties:
+                partition: { type: integer, minimum: 0 }
+                offset: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '202':
+          description: Replayed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fromTopic, partition, offset, toTopic]
+                properties:
+                  fromTopic: { type: string }
+                  partition: { type: integer }
+                  offset: { type: integer, format: int64 }
+                  toTopic: { type: string }
+                  eventId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerAuth:
@@ -190,6 +257,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    DeadLetterTopic:
+      name: topic
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z]+\.[a-z]+\.v[0-9]+\.dlt$' }
     ProductId:
       name: productId
       in: path
@@ -209,6 +281,20 @@ components:
       in: query
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
   schemas:
+    DeadLetter:
+      type: object
+      required: [topic, partition, offset, parkedAt, originalTopic]
+      properties:
+        topic: { type: string }
+        partition: { type: integer }
+        offset: { type: integer, format: int64 }
+        key: { type: string }
+        parkedAt: { type: string, format: date-time }
+        eventId: { type: string, format: uuid, description: Absent when the record is not a readable envelope }
+        eventType: { type: string }
+        originalTopic: { type: string }
+        originalOffset: { type: integer, format: int64 }
+        failure: { type: string, description: 'Exception class and message of the last attempt, at most 500 characters' }
     OrderStatus:
       type: string
       enum: [PENDING, PAYMENT_PROCESSING, CONFIRMED, FAILED]
