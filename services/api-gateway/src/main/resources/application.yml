@@ -96,3 +96,5 @@ commerceflow:
   gateway:
     jwk-set-uri: ${JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
     allowed-origins: ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173}
+    # Compose sets this to the web app (nginx), the only proxy whose X-Forwarded-For counts.
+    trusted-proxies: ${GATEWAY_TRUSTED_PROXIES:}

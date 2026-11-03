@@ -2,6 +2,7 @@ package dev.commerceflow.gateway;
 
 import java.net.InetSocketAddress;
 import java.security.Principal;
+import java.time.Clock;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,16 +15,17 @@ import reactor.core.publisher.Mono;
 public class RateLimitConfig {
 
   /**
-   * One bucket per signed-in user, otherwise one per client IP. The IP is the TCP peer address, not
-   * X-Forwarded-For: nothing trusted sits in front of the gateway yet, so that header would let any
-   * client pick its own bucket.
+   * One bucket per signed-in user, otherwise one per client IP: the TCP peer, or, behind the web
+   * app's nginx, the address nginx saw ({@link ClientAddress}). X-Forwarded-For from anyone else is
+   * ignored, or any client could pick its own bucket.
    *
    * <p>If Redis is unavailable the limiter lets requests through (fails open). For this system,
    * availability during a Redis outage is worth more than strict limiting; login stays protected by
    * per-account lockout in identity-service.
    */
   @Bean
-  KeyResolver clientKeyResolver() {
+  KeyResolver clientKeyResolver(GatewayProperties properties) {
+    ClientAddress clients = new ClientAddress(properties.trustedProxies(), Clock.systemUTC());
     return exchange ->
         exchange
             .getPrincipal()
@@ -33,9 +35,10 @@ public class RateLimitConfig {
                 Mono.fromSupplier(
                     () -> {
                       InetSocketAddress remote = exchange.getRequest().getRemoteAddress();
-                      return remote == null || remote.getAddress() == null
-                          ? "ip:unknown"
-                          : "ip:" + remote.getAddress().getHostAddress();
+                      return "ip:"
+                          + clients.of(
+                              remote == null ? null : remote.getAddress(),
+                              exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"));
                     }));
   }
 

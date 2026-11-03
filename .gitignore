@@ -23,6 +23,9 @@ crash.log
 # Frontend
 node_modules/
 dist/
+# Playwright traces record request bodies and tokens: never commit them.
+frontend/test-results/
+frontend/playwright-report/
 
 # IDE and OS
 .idea/

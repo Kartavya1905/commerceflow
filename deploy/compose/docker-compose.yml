@@ -353,6 +353,8 @@ services:
       JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      # The web app's nginx is the one proxy whose X-Forwarded-For the rate limits believe.
+      GATEWAY_TRUSTED_PROXIES: web
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     # Only the public port. The management port (8090) stays inside the network for Prometheus.
     ports:
@@ -375,6 +377,21 @@ services:
       retries: 30
       start_period: 20s
     mem_limit: 768m
+
+  # The web app: the built frontend behind nginx, which proxies /api to the gateway so the browser
+  # sees one origin. Open http://localhost:8000.
+  web:
+    <<: *restart
+    profiles: [apps]
+    build:
+      context: ../../frontend
+    image: commerceflow/web:local
+    ports:
+      - "127.0.0.1:8000:8080"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    mem_limit: 128m
 
   # --- Observability (profile: obs) ----------------------------------------------------------
 

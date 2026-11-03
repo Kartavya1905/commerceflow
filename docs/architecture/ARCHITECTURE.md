@@ -231,7 +231,7 @@ The payment-sandbox is a separate deployable on purpose: the "payment succeeded,
 | api-gateway | 8080 (management 8090, internal only) |
 | identity / catalog / order / inventory / payment / notification | 8081 / 8082 / 8083 / 8084 / 8085 / 8086 |
 | payment-sandbox | 8099 |
-| frontend (Vite dev) | 5173 |
+| web app (nginx, Compose) / frontend (Vite dev) | 8000 / 5173 |
 | PostgreSQL / Redis / Kafka | 5432 / 6379 / 9092 |
 | Grafana / Prometheus / Mailpit UI | 3000 / 9090 / 8025 |
 

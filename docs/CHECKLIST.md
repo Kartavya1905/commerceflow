@@ -144,7 +144,29 @@ Found during this milestone:
 - The replay check proved only that lag returned to zero. It now also waits until the consumers have handled as many records as were replayed. Replaying "everything from offset 0" also replayed earlier replays, so the topics doubled every run: 95 k, then 199 k, 413 k and 856 k records, until the fifth run could not finish in 5 minutes. No record was applied twice at any size, but a test that grows without bound proves nothing about the next run. The scenario now replays every original record of its run, from the offsets the run started at, and marks its copies so they are never replayed again.
 - Stopping a system-test run by its script or Maven left the forked test JVM running. It overlapped the next run and invalidated it. The runbook now says how to stop one, and only runs from a clean start count.
 
-## Milestones 8–12
+## Milestone 8 — Frontend (customer and admin)
+
+- [x] `frontend/`: React 19 + TypeScript + Vite. Customer pages: browse and search, product with live stock, cart, checkout with a sandbox test-card picker, order history, and an order page that follows the saga live. Admin pages: orders by status, products and stock (create, restock, write off, archive), sagas past their deadline, payment attempts, and dead letters with replay (ADR-0013)
+- [x] Typed client generated from `contracts/` (`openapi-typescript` + `openapi-fetch`). CI regenerates it and fails on a difference. The dead-letter endpoints were added to the order-service contract
+- [x] Tokens: the access token is kept in memory only. The refresh token is the HttpOnly, SameSite=Strict cookie, restored on reload by one shared refresh. ESLint forbids web storage in app code
+- [x] Checkout: one Idempotency-Key per attempt, kept across retries until a terminal answer. Order status polls with exponential backoff and jitter (1 s → 15 s) and stops when final
+- [x] Served by nginx at http://localhost:8000 (unprivileged, strict CSP with no `'unsafe-inline'`, `frame-ancestors 'none'`), proxying `/api` to the gateway so the browser sees one origin, with no CORS
+- [x] Gateway: believes `X-Forwarded-For` only from its trusted proxy (`web`), and then only the right-most hop. Without that, every visitor behind nginx shared one rate-limit bucket, login included
+- [x] Tests: Vitest 33 (checkout state and page, cart total, session and refresh, polling, admin visibility); Playwright smoke 4 against Compose (register → buy → `CONFIRMED`; reload keeps the session, with nothing in web storage; admin pages hidden from a customer and the API answering 403; admin sees them); gateway `ClientAddressTest` 7. 504 in the Maven build
+- [x] Mutation checks: 6 of 6 caught (new key on retry, key per click, token in localStorage, fixed-rate polling, admin pages shown to customers, parallel refreshes)
+- [x] No Node on the machine: npm, Vitest and the build run in `node:22.23.4-alpine3.24`, and Playwright in its pinned image on the host network (`scripts/e2e.sh`)
+- [ ] CI green on GitHub, including the smoke test in the `infra` job
+- [ ] Tag `m8-done`
+
+Found during this milestone:
+- Behind nginx, the gateway answered every browser request with 403. nginx forwarded `Host` without its port, so the gateway took the app's own same-origin calls for cross-origin ones from a site it does not allow. nginx now forwards the browser's `Host`; a foreign origin is still refused.
+- After a reload, "Add to cart" sent a signed-in customer to sign in: the page acted before the session had been restored. The button now waits until it is.
+- Playwright's failure traces in `frontend/test-results/` recorded test tokens and the admin's sign-in request, and git did not ignore them. They are ignored now, the old ones were deleted, and none were ever committed.
+- Two smoke tests reused the account the first test registers, so one failure took all three down. Each now has its own customer.
+
+Not done yet, deliberately: the payment contract's `POST /api/v1/admin/payments/{attemptId}/reconcile` ("reconcile now") is still not implemented; it was never built in Milestone 6 either. Until it is, an admin waits for the reconciler's next look.
+
+## Milestones 9–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

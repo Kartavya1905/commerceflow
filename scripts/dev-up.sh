@@ -65,7 +65,7 @@ ensure_env_file() {
 check_ports() {
   local ports=(5432 9092 6379 1025 8025)
   ! $with_obs || ports+=(4317 4318 9090 3000)
-  ! $with_apps || ports+=(8080 8081 8082 8083 8084 8085)
+  ! $with_apps || ports+=(8000 8080 8081 8082 8083 8084 8085)
 
   # `docker port` lists each mapping on its own line ("4317/tcp -> 127.0.0.1:4317"), unlike
   # `docker ps`, which condenses neighbours into ranges such as 4317-4318.
@@ -173,7 +173,8 @@ EOF
 fi
 if $with_apps; then
   cat << EOF
-    API gateway  http://localhost:8080   (admin: $(env_value BOOTSTRAP_ADMIN_EMAIL), password: BOOTSTRAP_ADMIN_PASSWORD in .env)
+    Web app      http://localhost:8000   (admin: $(env_value BOOTSTRAP_ADMIN_EMAIL), password: BOOTSTRAP_ADMIN_PASSWORD in .env)
+    API gateway  http://localhost:8080
     Services     identity :8081, catalog :8082, order :8083, inventory :8084, payment :8085 (direct, for debugging)
 EOF
 fi

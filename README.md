@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 7 of 12.** The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 8 of 12.** A customer and admin web app (http://localhost:8000) sits on top: browse, cart, checkout with sandbox test cards, live order status, and admin pages for orders, stock, sagas, payments and dead letters. The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
@@ -28,7 +28,7 @@ scripts/check-infra.sh           # verifies every component, then a full flow th
 scripts/dev-down.sh              # stop (add --volumes to delete local data)
 ```
 
-On Windows PowerShell use `.\scripts\dev-up.ps1 --obs --apps`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. The API is at http://localhost:8080 (admin login: `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`), Grafana at http://localhost:3000, Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
+On Windows PowerShell use `.\scripts\dev-up.ps1 --obs --apps`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. The web app is at http://localhost:8000 and the API at http://localhost:8080 (admin login: `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`); `scripts/e2e.sh` runs the browser smoke test, Grafana at http://localhost:3000, Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
 
 ## Project plan
 

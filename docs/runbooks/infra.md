@@ -26,6 +26,15 @@ docker compose -f deploy/compose/docker-compose.yml --env-file .env
 - The JWT signing key is `secrets/jwt-private.pem`, created by `dev-up`. Deleting it and running `dev-up` again rotates it: every existing token stops working, and services pick up the new key from the JWKS by its new key id.
 - Logs are JSON in containers: `C --profile apps logs -f api-gateway`. Filter one request with its id: `... | grep <X-Correlation-Id>`.
 
+### The web app
+
+- http://localhost:8000 is the web app (`web`: nginx serving the build and proxying `/api` to the gateway). Sign in as the bootstrap admin to see the Admin pages.
+- Checkout offers the sandbox's test cards. "Answers too late" (`tok_timeout`) shows the order processing for 30-40 s while the reconciler finds the charge, then confirmed.
+- Signed out after every reload: the browser dropped the refresh cookie. It is `Secure`, which browsers keep over plain HTTP only on `localhost`, so use `http://localhost:8000`, not `127.0.0.1` or a machine name.
+- Every visitor shares one rate-limit bucket (many 429s at once): the gateway is not trusting nginx's `X-Forwarded-For`. Check `GATEWAY_TRUSTED_PROXIES=web` on api-gateway, and that the `web` container is running (a name that does not resolve is not trusted).
+- A blank page with a Content-Security-Policy error in the browser console means something inline crept into the build. The policy allows only files served by the app itself.
+- Development without Docker for the app: `npm run dev` in `frontend/` (needs Node 22) serves on :5173 and proxies `/api` to the gateway on :8080. The smoke test: `scripts/e2e.sh`, against the running stack.
+
 ### A service is unhealthy
 
 `C --profile apps ps` shows which. `C --profile apps logs <service> | grep -m5 -iE "error|exception|failed"` usually names the cause. Common ones:
