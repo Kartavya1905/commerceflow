@@ -21,6 +21,19 @@ export function AdminPaymentsPage() {
   const [filter, setFilter] = useState<{ orderId?: string; status?: Status }>({ status: "UNKNOWN" });
   const [items, setItems] = useState<Attempt[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function reconcileNow(attempt: Attempt) {
+    const { error, response } = await payments.POST(
+      "/api/v1/admin/payments/{attemptId}/reconcile",
+      { params: { path: { attemptId: attempt.id } } },
+    );
+    setMessage(
+      response.status === 202
+        ? `The reconciler will look at the payment for order ${attempt.orderId.slice(0, 8)} within about 10 seconds.`
+        : describe(error, "The payment could not be scheduled for reconciliation."),
+    );
+  }
 
   useEffect(() => {
     void payments
@@ -59,6 +72,7 @@ export function AdminPaymentsPage() {
         <button type="submit">Find</button>
       </form>
       {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
       {items.length === 0 && !error && <p>No payment attempts match.</p>}
       {items.length > 0 && (
         <div className="table-wrap">
@@ -71,6 +85,7 @@ export function AdminPaymentsPage() {
                 <th>Looks</th>
                 <th>Next look</th>
                 <th>Created</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -87,6 +102,13 @@ export function AdminPaymentsPage() {
                   <td>{a.reconcileAttempts ?? 0}</td>
                   <td>{when(a.nextReconcileAt)}</td>
                   <td>{when(a.createdAt)}</td>
+                  <td>
+                    {reconcilable(a) && (
+                      <button type="button" onClick={() => void reconcileNow(a)}>
+                        Reconcile now
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -94,5 +116,16 @@ export function AdminPaymentsPage() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * What the reconciler would look at anyway (the server decides; this only hides a button that
+ * would get 409): an open outcome, a pending refund, or a closed attempt still due its last look.
+ */
+export function reconcilable(attempt: Attempt): boolean {
+  return (
+    ["INITIATED", "UNKNOWN", "REFUND_PENDING"].includes(attempt.status) ||
+    (["CANCELLED", "FAILED"].includes(attempt.status) && attempt.nextReconcileAt != null)
   );
 }

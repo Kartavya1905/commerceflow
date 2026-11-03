@@ -375,6 +375,36 @@ class PaymentLedger {
     return moved == 1;
   }
 
+  /**
+   * An admin asked for the next look now. Only what the reconciler would look at anyway can be
+   * brought forward: an open outcome, a pending refund, or a closed attempt still due its one later
+   * look. A settled attempt has nothing left to find.
+   *
+   * @return the attempt as it was, if it could be brought forward
+   */
+  @Transactional
+  Optional<Attempt> lookNow(UUID attemptId) {
+    Optional<Attempt> attempt =
+        jdbc.sql(
+                """
+                select * from payment_attempts
+                 where id = :id
+                   and (status in ('INITIATED', 'UNKNOWN', 'REFUND_PENDING')
+                        or (status in ('CANCELLED', 'FAILED') and next_reconcile_at is not null))
+                   for update
+                """)
+            .param("id", attemptId)
+            .query(Attempt::map)
+            .optional();
+    attempt.ifPresent(
+        a ->
+            jdbc.sql("update payment_attempts set next_reconcile_at = :now where id = :id")
+                .param("now", now())
+                .param("id", attemptId)
+                .update());
+    return attempt;
+  }
+
   /** The last look at a closed attempt found no charge: nothing more to check. */
   @Transactional
   void finishLook(UUID attemptId) {
@@ -410,6 +440,14 @@ class PaymentLedger {
         .param("id", attemptId)
         .query(Attempt::map)
         .single();
+  }
+
+  @Transactional(readOnly = true)
+  Optional<Attempt> findById(UUID attemptId) {
+    return jdbc.sql("select * from payment_attempts where id = :id")
+        .param("id", attemptId)
+        .query(Attempt::map)
+        .optional();
   }
 
   @Transactional(readOnly = true)

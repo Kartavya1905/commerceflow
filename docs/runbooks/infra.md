@@ -90,6 +90,7 @@ Most of the time nothing needs doing. The deadline sweeper (every 5 s) re-sends 
 - Test tokens: `tok_success`, `tok_decline`, `tok_insufficient`, `tok_timeout` (charges, then answers too late), `tok_unknown` (fails without charging).
 - The reconciler (every 10 s) asks the provider, by idempotency key, about `UNKNOWN` attempts, `INITIATED` ones older than 30 s (left by a crash), and `REFUND_PENDING` ones whose refund call failed. A charge it finds is recorded exactly as if the call had answered. With no charge for 15 minutes, the attempt fails (`TIMEOUT_UNRESOLVED`) and the stock is released. Attempts closed without a charge get one later look, and a charge that landed after all is refunded (alert `LateChargeRefunded`).
 - `PaymentReconciliationOverdue`: an outcome has been unknown for over 15 minutes, so the provider cannot be asked. Check the sandbox is up and not in a fault mode (above). `payment.reconcile.provider_unavailable` counts the failed lookups.
+- "Reconcile now": the admin payments page (or `POST /api/v1/admin/payments/{attemptId}/reconcile`) brings an attempt's next look forward to the reconciler's next round, within 10 s, for example once the sandbox is back. A settled attempt answers 409: there is nothing left to find. Each request is audited (`PAYMENT_RECONCILE_REQUESTED`).
 
 ## Fault injection
 
