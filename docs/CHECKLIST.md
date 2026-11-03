@@ -132,8 +132,8 @@ Not done yet, deliberately: the deadline sweeper (re-sends, then compensation) a
 - [x] All nine scenarios pass 5 consecutive runs (45 of 45, 0 invariant violations, 2026-11-03); numbers in [failure-recovery.md](reports/failure-recovery.md), raw results in [reports/data/](reports/data/failure-recovery-2026-11-03.jsonl)
 - [x] Tests: saga table 129 (now including the deadline transitions and the sweeper always having a move); order-service integration 44 (sweeper 9, dead-letter replay 3); payment-service 26 against the real sandbox (reconciler 11); messaging 23 (backoff, outage detection including a failed rollback, chaos, outage retried past the limit, shutdown order); web-common 2 (503 mapping); gateway: the DNS cache cap, and the dead-letter route in GatewayIT. 497 in the build (448 after Milestone 6). `check-infra`: 144 checks, now including the reconciler confirming a `tok_timeout` order
 - [x] Mutation checks: 11 of 11 caught (no jitter, never giving up, unguarded settle, sweeping without the row lock, replay bypassing dedupe, publisher stopping first, outage dead-lettered, late charge on a failed attempt kept, no look after a cancel, pending refund never retried, never resolving as unresolved)
-- [ ] CI green on GitHub
-- [ ] Tag `m7-done`
+- [x] CI green on GitHub (run 41660152488, first attempt, on 9a1c1cf, which contains this milestone; the commit alone also built locally: 497 tests, 0 failures)
+- [x] Tag `m7-done` (on 40da9c4)
 
 Found during this milestone:
 - A system-test error message echoed the sandbox API key, which went to local logs only. The fault switch now goes in on stdin and reads the key inside the container, failures are redacted, and the logs were deleted.
@@ -155,8 +155,8 @@ Found during this milestone:
 - [x] Tests: Vitest 33 (checkout state and page, cart total, session and refresh, polling, admin visibility); Playwright smoke 4 against Compose (register → buy → `CONFIRMED`; reload keeps the session, with nothing in web storage; admin pages hidden from a customer and the API answering 403; admin sees them); gateway `ClientAddressTest` 7. 504 in the Maven build
 - [x] Mutation checks: 6 of 6 caught (new key on retry, key per click, token in localStorage, fixed-rate polling, admin pages shown to customers, parallel refreshes)
 - [x] No Node on the machine: npm, Vitest and the build run in `node:22.23.4-alpine3.24`, and Playwright in its pinned image on the host network (`scripts/e2e.sh`)
-- [ ] CI green on GitHub, including the smoke test in the `infra` job
-- [ ] Tag `m8-done`
+- [x] CI green on GitHub, including the smoke test in the `infra` job (run 41660152488, first attempt)
+- [x] Tag `m8-done` (on 9a1c1cf)
 
 Found during this milestone:
 - Behind nginx, the gateway answered every browser request with 403. nginx forwarded `Host` without its port, so the gateway took the app's own same-origin calls for cross-origin ones from a site it does not allow. nginx now forwards the browser's `Host`; a foreign origin is still refused.
