@@ -78,6 +78,37 @@ server:
 # The gateway is the public entry point, so its own actuator lives on a separate port that is
 # reachable only inside the network (Prometheus scrapes it there).
 management:
+  # One trace per checkout across every service and Kafka (NFR-08). Every request is sampled: this
+  # is a local, low-traffic system. Spans leave only when TRACING_EXPORT is on (dev-up --obs), so
+  # without the collector nothing retries an export endpoint that is not there.
+  tracing:
+    sampling:
+      probability: 1.0
+    export:
+      enabled: ${TRACING_EXPORT:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  # Logs stay on stdout (JSON, with trace and correlation ids); only traces go out over OTLP.
+  logging:
+    export:
+      otlp:
+        enabled: false
+  # Metrics are scraped by Prometheus (/actuator/prometheus); the starter's OTLP push would only
+  # retry a collector endpoint every minute and log a warning each time.
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  # Latency as a histogram with fixed buckets, so dashboards show percentiles (p95, p99), not
+  # averages. Nine buckets per route instead of the default ~70 keeps the series count low, and
+  # 300 ms (NFR-05, alert SlowReads) is one of the bucket edges, so it is measured exactly.
+  metrics:
+    distribution:
+      slo:
+        http.server.requests: 25ms,50ms,100ms,200ms,300ms,500ms,1s,2s,5s
   server:
     port: ${MANAGEMENT_PORT:8090}
   endpoints:
@@ -98,3 +129,9 @@ commerceflow:
     allowed-origins: ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173}
     # Compose sets this to the web app (nginx), the only proxy whose X-Forwarded-For counts.
     trusted-proxies: ${GATEWAY_TRUSTED_PROXIES:}
+
+logging:
+  structured:
+    json:
+      # Secrets and personal data are masked in every JSON log line (INV-8; LogRedaction).
+      customizer: dev.commerceflow.security.RedactingLogCustomizer

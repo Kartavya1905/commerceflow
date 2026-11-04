@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.slf4j.MDC;
@@ -32,6 +33,7 @@ public class InboundEvents {
   private final TransactionTemplate tx;
   private final MeterRegistry meters;
   private final Chaos chaos;
+  private final Predicate<String> knownEventType;
   private final JsonMapper json = JsonMapper.builder().build();
 
   /** A failure injected by {@link Chaos}; retried like any other processing failure. */
@@ -46,10 +48,24 @@ public class InboundEvents {
   }
 
   public InboundEvents(JdbcClient jdbc, TransactionTemplate tx, MeterRegistry meters, Chaos chaos) {
+    this(jdbc, tx, meters, chaos, type -> true);
+  }
+
+  /**
+   * @param knownEventType whether an event type is in the contract catalogue; any other type is
+   *     counted as "other", because a metric label must come from a bounded set
+   */
+  public InboundEvents(
+      JdbcClient jdbc,
+      TransactionTemplate tx,
+      MeterRegistry meters,
+      Chaos chaos,
+      Predicate<String> knownEventType) {
     this.jdbc = jdbc;
     this.tx = tx;
     this.meters = meters;
     this.chaos = chaos;
+    this.knownEventType = knownEventType;
   }
 
   /**
@@ -126,7 +142,7 @@ public class InboundEvents {
               "consumer",
               consumer,
               "eventType",
-              event.eventType(),
+              knownEventType.test(event.eventType()) ? event.eventType() : "other",
               "outcome",
               Boolean.TRUE.equals(applied) ? "processed" : "duplicate")
           .increment();

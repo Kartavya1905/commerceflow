@@ -166,7 +166,31 @@ Found during this milestone:
 
 Added after the tag: `POST /api/v1/admin/payments/{attemptId}/reconcile` ("reconcile now"), in the contract since Milestone 6 but never built. It brings an attempt's next look forward to the reconciler's next round (within 10 s), so the look still goes through the usual claim and guarded updates. 202, or 409 for a settled attempt, 404 for none; every request audited (payment-service gets `audit_events`, V3). A "Reconcile now" button on the admin payments page shows only where there is something to look for. Tests: `ReconcileNowIT` 5 (including asking twice resolving once), Vitest 2; mutation check (settled attempt made reconcilable) caught. Commit 06114ab, CI green (run 41706802993, first attempt)
 
-## Milestones 9–12
+## Milestone 9 — Testing, security, observability
+
+- [x] JaCoCo merges unit and integration coverage per module. Each service fails its build below 80 % line coverage in any domain or saga package (catalog `product`; identity `user`, `token`; inventory `reservation`, `stock`; order `order`, `saga`, `cart`; payment `payment`, `provider`). All are at 90–100 %. The rule was proven to bite by raising it to 99 % (ADR-0014)
+- [x] ArchUnit rules shared in test-support and run by every service and library: no service depends on another, no controller touches `JdbcClient`, `JdbcTemplate` or a repository, Kafka only through the outbox, no field injection, standard streams or java.util.logging. The first run found three controllers querying the database; those queries moved to `AccountService.profile`, `SagaQueries` and `PaymentQueries`
+- [x] Scans in pinned images through `scripts/scan-security.sh`, the same locally and in CI (`security.yml`, weekly too): gitleaks over the whole history, Trivy over the repository and all 8 built images, CodeQL `security-extended` for Java and TypeScript. Nothing HIGH or CRITICAL is left; `.trivyignore` is empty
+- [x] `SecurityIT` 12 against the running stack (`scripts/security-test.sh`, CI `infra` job): admin-only endpoints, forged tokens (alg none, a stranger's key, and the stack's own key with expired, wrong-audience and wrong-issuer claims, plus a control that must pass), services checking tokens themselves, another customer's order answering 404, idempotency-key replay, refresh-token replay, invalid input answering 400 without internals, injection strings, web security headers, the services' logs scanned for emails and tokens, metric labels, and the login rate limit answering 429
+- [x] Logs: `RedactingLogCustomizer` masks emails, JWTs, Bearer values, secret fields, sandbox payment tokens and Luhn-valid card numbers in every JSON line, exception messages and stack traces included. `LogRedactionTest` 5, `LogRedactionIT` through the service's real logging
+- [x] Tracing: OpenTelemetry in every service and the gateway. The outbox stores the writer's `traceparent`, so one checkout is one trace across gateway, order, inventory and payment, Kafka hops included (checked in Tempo). Logs carry `traceId`, `spanId` and `correlationId`. Spans are exported only with `dev-up --obs`
+- [x] Metrics: bounded labels only. Unknown command types go to the log, not a label; event types outside the contract catalogue are `other`. Latency uses 9 fixed buckets with 300 ms as an edge (about 1,000 bucket series down to a fixed few per route). New: `orders.placed`, `saga.instances{state}`
+- [x] Dashboards `checkout` (7 panels) and `latency` (4 panels): rates and p95/p99, no averages. Each query was checked to return data
+- [x] Alerts: 13, each with a runbook link that `scripts/check-alerts.sh` checks resolves to a real heading. promtool tests (`alerts.test.yml`) make every alert fire with its labels and annotations, then clear. New: `ServerErrors`, `SlowReads`. A broken threshold was caught
+- [x] `docs/security/SECURITY.md`: assets, trust boundaries, and every threat mapped to its control and test. ADR-0014
+- [x] Mutation checks: 5 of 5 caught (trace context not stored with the event, unbounded event-type label, redaction switched off, emails left unmasked, a controller holding `JdbcClient`)
+- [x] Full Maven build: 567 tests, 0 failures. Against the stack: check-infra 144, Playwright smoke 4, `SecurityIT` 12, image scan clean
+- [ ] CI green on GitHub
+- [ ] Tag `m9-done`
+
+Found during this milestone:
+- Trivy found HIGH and CRITICAL vulnerabilities with fixes: in the Kafka client's compression libraries (`lz4-java`, `snappy-java`), now pinned in the parent pom, and in the nginx image's Alpine packages (brotli, curl, libexpat), upgraded at build time. The kafka-init image ran as root; it no longer does.
+- The default latency histogram created about 1,000 bucket series. It now has fixed buckets, and `SecurityIT` fails any metric with more than 100 label combinations.
+- Four counters (unknown inventory and payment commands, ignored saga events, consumed events) were labelled with whatever type arrived, so a bad producer could create a label value per message. They no longer are.
+- The OpenTelemetry starter also pushed metrics over OTLP to nothing and logged a warning every minute. That push is off; Prometheus scrapes.
+- `LogRedactionIT` passed alone but saw plain-text logs in the full build, because an earlier test context had configured logging for the JVM. It now resets logging first.
+
+## Milestones 10–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

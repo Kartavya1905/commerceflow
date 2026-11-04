@@ -419,13 +419,15 @@ if container_running api-gateway; then
   http_status -X POST -H "Authorization: Bearer $admin" "$gw/api/v1/admin/products/$product_id/archive" > /dev/null
 
   if container_running prometheus; then
+    # Counted per service, not per series: right after a restart Prometheus still holds the old
+    # containers' series for a few minutes, and a raw count would be too high.
     services_up() {
-      [[ $(curl -sS --get --data-urlencode 'query=sum(up{job="services"})' http://127.0.0.1:9090/api/v1/query |
+      [[ $(curl -sS --get --data-urlencode 'query=count(count by (service) (up{job="services"} == 1))' http://127.0.0.1:9090/api/v1/query |
         grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 6 ]]
     }
     if eventually 60 services_up; then pass "prometheus scrapes all six services"; else fail "prometheus is not scraping all six services"; fi
     outbox_metrics() {
-      [[ $(curl -sS --get --data-urlencode 'query=count(outbox_pending)' http://127.0.0.1:9090/api/v1/query |
+      [[ $(curl -sS --get --data-urlencode 'query=count(count by (service) (outbox_pending))' http://127.0.0.1:9090/api/v1/query |
         grep -oE '"[0-9]+"\]' | tr -dc '0-9') == 3 ]]
     }
     if eventually 60 outbox_metrics; then pass "all three publishing services report their outbox backlog"; else fail "outbox_pending is missing for order, inventory or payment"; fi

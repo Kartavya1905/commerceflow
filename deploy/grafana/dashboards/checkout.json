@@ -1,0 +1,113 @@
+{
+  "uid": "cf-checkout",
+  "title": "CommerceFlow / Checkout",
+  "description": "Is the checkout finishing? Orders through each step, sagas waiting at each state, re-sends and stuck sagas, why reservations fail, and payments whose outcome is still unknown. Runbook: docs/runbooks/infra.md (An order is stuck in checkout; Payments).",
+  "tags": ["commerceflow", "checkout"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "bargauge",
+      "title": "Checkout funnel (selected range)",
+      "description": "Orders accepted, then how many reached payment, were confirmed, or failed. A widening gap between placed and confirmed plus failed means orders are still in progress or stuck.",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(orders_placed_total[$__range]))", "legendFormat": "placed", "instant": true },
+        { "refId": "B", "expr": "sum(increase(order_transitions_total{to=\"PAYMENT_PROCESSING\"}[$__range]))", "legendFormat": "reached payment", "instant": true },
+        { "refId": "C", "expr": "sum(increase(order_transitions_total{to=\"CONFIRMED\"}[$__range]))", "legendFormat": "confirmed", "instant": true },
+        { "refId": "D", "expr": "sum(increase(order_transitions_total{to=\"FAILED\"}[$__range]))", "legendFormat": "failed", "instant": true }
+      ],
+      "options": { "orientation": "horizontal", "displayMode": "basic", "showUnfilled": true },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Orders per minute, by outcome",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(orders_placed_total[2m])) * 60", "legendFormat": "placed" },
+        { "refId": "B", "expr": "sum by (to) (rate(order_transitions_total{to=~\"CONFIRMED|FAILED\"}[2m])) * 60", "legendFormat": "{{to}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Sagas waiting, by state",
+      "description": "Sagas that have not finished, at each step. Normal checkouts pass through in seconds; a state that keeps growing is where orders are waiting.",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max by (state) (saga_instances{state!~\"COMPLETED|FAILED\"})", "legendFormat": "{{state}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" }, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Sweeper: re-sends, give-ups, stuck",
+      "description": "Re-sends mean an answer was late; give-ups mean the saga compensated. Stuck sagas are past their last re-send with no safe way out. Alert: SagaStuck.",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(saga_resends_total[5m])) * 60", "legendFormat": "re-sends per minute" },
+        { "refId": "B", "expr": "sum(rate(saga_deadline_exceeded_total[5m])) * 60", "legendFormat": "gave up per minute" },
+        { "refId": "C", "expr": "max(saga_stuck)", "legendFormat": "stuck now" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Reservations per minute, by outcome and reason",
+      "description": "Rejected reservations are orders that fail as OUT_OF_STOCK (or name an unknown product).",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome, reason) (rate(inventory_reservations_total[5m])) * 60", "legendFormat": "{{outcome}} {{reason}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Payments with an unknown outcome",
+      "description": "Attempts still INITIATED or UNKNOWN, and how long the oldest has been open. The reconciler resolves them within 15 minutes; past that, PaymentReconciliationOverdue fires.",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "max(payment_reconciliation_open)", "legendFormat": "open attempts" },
+        { "refId": "B", "expr": "max(payment_reconciliation_oldest_age_seconds) / 60", "legendFormat": "oldest open (minutes)" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Payment outcomes per minute",
+      "description": "How charges end, and what the reconciler settled from the provider's records. Late-charge refunds are customers charged after their order failed (alert: LateChargeRefunded).",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(payment_attempts_total[5m])) * 60", "legendFormat": "charge {{outcome}}" },
+        { "refId": "B", "expr": "sum by (outcome) (rate(payment_reconciled_total[5m])) * 60", "legendFormat": "reconciled {{outcome}}" },
+        { "refId": "C", "expr": "sum(rate(payment_late_charge_refunded_total[5m])) * 60", "legendFormat": "late charge refunded" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    }
+  ]
+}

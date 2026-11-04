@@ -4,6 +4,8 @@ import dev.commerceflow.order.order.OrderWriter.KeyedOrder;
 import dev.commerceflow.order.pricing.CatalogClient;
 import dev.commerceflow.order.pricing.CatalogClient.Price;
 import dev.commerceflow.web.ApiException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -27,11 +29,16 @@ public class OrderService {
   private final CatalogClient catalog;
   private final OrderWriter writer;
   private final OrderQueries queries;
+  private final Counter placed;
 
-  public OrderService(CatalogClient catalog, OrderWriter writer, OrderQueries queries) {
+  public OrderService(
+      CatalogClient catalog, OrderWriter writer, OrderQueries queries, MeterRegistry meters) {
     this.catalog = catalog;
     this.writer = writer;
     this.queries = queries;
+    // The top of the checkout funnel; order.transitions{to} counts every step after it.
+    this.placed =
+        Counter.builder("orders.placed").description("New orders accepted").register(meters);
   }
 
   public PlaceResult place(
@@ -78,6 +85,8 @@ public class OrderService {
     Optional<UUID> created =
         writer.insertPending(customerId, idempotencyKey, order, prices, currencies.get(0), total);
     if (created.isPresent()) {
+      // Committed by now (insertPending is its own transaction); a replay is not counted.
+      placed.increment();
       return new PlaceResult(queries.find(created.get()).orElseThrow(), true);
     }
     // A concurrent request with the same key won the insert; answer as its replay.

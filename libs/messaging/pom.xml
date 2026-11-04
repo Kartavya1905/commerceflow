@@ -32,6 +32,12 @@
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-core</artifactId>
     </dependency>
+    <!-- Trace context across the outbox, when the service has tracing (TraceHeaders). -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing</artifactId>
+      <optional>true</optional>
+    </dependency>
 
     <dependency>
       <groupId>dev.commerceflow</groupId>

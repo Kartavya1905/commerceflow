@@ -102,6 +102,33 @@ class OutboxAndInboxIT {
     assertThat(aggregateVersions(order)).containsExactly(1L, 2L, 3L, 4L, 5L);
   }
 
+  /**
+   * NFR-08: the trace of the request that wrote an event is stored with the row and sent with the
+   * record, so the consumer continues the same trace instead of starting a new one.
+   */
+  @Test
+  void theWritersTraceContextTravelsWithTheEvent() {
+    UUID order = UUID.randomUUID();
+    tx.executeWithoutResult(s -> outbox.append("OrderCreated", "Order", order, payload(order)));
+
+    String stored =
+        jdbc.sql("select headers ->> 'traceparent' from outbox_events where partition_key = ?")
+            .param(order.toString())
+            .query(String.class)
+            .single();
+    assertThat(stored).isEqualTo(MessagingTestApp.TRACEPARENT);
+    List<ConsumerRecord<String, String>> sent =
+        dev.commerceflow.testsupport.TopicReader.read(
+            kafkaContainer.getBootstrapServers(),
+            "order.events.v1",
+            r -> order.toString().equals(r.key()),
+            1,
+            WAIT);
+    assertThat(sent).hasSize(1);
+    assertThat(new String(sent.get(0).headers().lastHeader("traceparent").value()))
+        .isEqualTo(MessagingTestApp.TRACEPARENT);
+  }
+
   /** A crash after Kafka acknowledged a row but before it was marked: the row is sent again. */
   @Test
   void aRepublishedEventIsDeliveredTwiceButAppliedOnce() {

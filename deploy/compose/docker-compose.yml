@@ -9,6 +9,11 @@
 
 name: commerceflow
 
+# Tracing (NFR-08): spans go to the collector only when dev-up runs with --obs, which starts it.
+x-tracing: &tracing
+  TRACING_EXPORT: ${TRACING_EXPORT:-false}
+  OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+
 x-restart: &restart
   restart: unless-stopped
   # Docker's default is 10 s, then SIGKILL. Services drain in-flight requests and Kafka records
@@ -183,6 +188,7 @@ services:
         SERVICE: identity-service
     image: commerceflow/identity-service:local
     environment:
+      <<: *tracing
       IDENTITY_DB_URL: jdbc:postgresql://postgres:5432/identity_db
       IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?set in .env}
       JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
@@ -213,6 +219,7 @@ services:
         SERVICE: catalog-service
     image: commerceflow/catalog-service:local
     environment:
+      <<: *tracing
       PORT: 8082
       CATALOG_DB_URL: jdbc:postgresql://postgres:5432/catalog_db
       CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD:?set in .env}
@@ -239,6 +246,7 @@ services:
         SERVICE: order-service
     image: commerceflow/order-service:local
     environment:
+      <<: *tracing
       PORT: 8083
       ORDER_DB_URL: jdbc:postgresql://postgres:5432/order_db
       ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?set in .env}
@@ -269,6 +277,7 @@ services:
         SERVICE: inventory-service
     image: commerceflow/inventory-service:local
     environment:
+      <<: *tracing
       PORT: 8084
       INVENTORY_DB_URL: jdbc:postgresql://postgres:5432/inventory_db
       INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:?set in .env}
@@ -316,6 +325,7 @@ services:
         SERVICE: payment-service
     image: commerceflow/payment-service:local
     environment:
+      <<: *tracing
       PORT: 8085
       PAYMENT_DB_URL: jdbc:postgresql://postgres:5432/payment_db
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?set in .env}
@@ -345,6 +355,7 @@ services:
         SERVICE: api-gateway
     image: commerceflow/api-gateway:local
     environment:
+      <<: *tracing
       IDENTITY_URI: http://identity-service:8081
       CATALOG_URI: http://catalog-service:8082
       ORDER_URI: http://order-service:8083

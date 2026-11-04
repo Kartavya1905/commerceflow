@@ -78,6 +78,9 @@ jobs:
           scripts/*.sh scripts/lib/*.sh
           deploy/compose/kafka-init/create-topics.sh
           deploy/compose/postgres/create-service-databases.sh
+      # Every alert links a runbook section that exists, and fires and clears in promtool's tests.
+      - name: Alert rules
+        run: bash scripts/check-alerts.sh
 
   # Brings up the whole local stack on the runner and runs every infrastructure check.
   infra:
@@ -105,6 +108,13 @@ jobs:
       # ROADMAP M8 acceptance: register, buy, see CONFIRMED, and admin refused, in a real browser.
       - name: Web app smoke test
         run: bash scripts/e2e.sh
+
+      - name: Security suite against the stack
+        run: bash scripts/security-test.sh
+
+      # The images just built and run: no HIGH or CRITICAL vulnerability with a fix left untriaged.
+      - name: Image scan (Trivy)
+        run: bash scripts/scan-security.sh images
 
       - name: Smoke test report on failure
         if: failure()

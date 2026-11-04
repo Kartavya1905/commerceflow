@@ -1,0 +1,3 @@
+# Triaged Trivy findings (scripts/scan-security.sh). Each entry is accepted on purpose and says
+# why, and when it is looked at again. An entry without both is not triaged and must not be added.
+# Format: the finding id on its own line, preceded by its reason as comments.

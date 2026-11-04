@@ -15,6 +15,16 @@ import org.springframework.stereotype.Component;
 @SpringBootApplication
 class MessagingTestApp {
 
+  /** A fixed trace context, so tests can follow it from the outbox row to the Kafka record. */
+  static final String TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+  // Primary: this app also scans the auto-configuration's package, so both are registered.
+  @org.springframework.context.annotation.Bean
+  @org.springframework.context.annotation.Primary
+  TraceHeaders fixedTraceHeaders() {
+    return headers -> headers.put("traceparent", TRACEPARENT);
+  }
+
   /** Consumes OrderCreated and records each application in applied_events. */
   @Component
   static class TestListener {

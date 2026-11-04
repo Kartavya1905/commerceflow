@@ -1,0 +1,224 @@
+# Every alert, fired and cleared: synthetic series go in, and promtool checks when each alert
+# starts firing, with which labels and annotations, and that it clears once the series recover.
+#
+#   docker run --rm --entrypoint promtool -v "$PWD/deploy/compose/prometheus:/p" \
+#     prom/prometheus:v3.15.1 test rules /p/alerts.test.yml
+#
+# CI runs this; scripts/check-alerts.sh also checks every alert links a runbook section that exists.
+
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a service stops answering scrapes, then comes back
+    interval: 1m
+    input_series:
+      - series: 'up{job="services", instance="order-service:8083", service="order-service"}'
+        values: '1 0 0 0 1 1'
+    alert_rule_test:
+      - { eval_time: 1m, alertname: ScrapeTargetDown, exp_alerts: [] }
+      - eval_time: 3m
+        alertname: ScrapeTargetDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: services, instance: "order-service:8083", service: order-service }
+            exp_annotations:
+              summary: "services has not answered a scrape for 1 minute"
+              runbook: docs/runbooks/infra.md#scrape-target-down
+      - { eval_time: 5m, alertname: ScrapeTargetDown, exp_alerts: [] }
+
+  - name: the broker disappears, then returns
+    interval: 1m
+    input_series:
+      - series: 'kafka_brokers{job="kafka-exporter", instance="kafka-exporter:9308"}'
+        values: '1 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KafkaBrokerUnreachable
+        exp_alerts:
+          - exp_labels: { severity: critical, job: kafka-exporter, instance: "kafka-exporter:9308" }
+            exp_annotations:
+              summary: "kafka-exporter sees no Kafka broker"
+              runbook: docs/runbooks/infra.md#kafka-broker-unreachable
+      - { eval_time: 5m, alertname: KafkaBrokerUnreachable, exp_alerts: [] }
+
+  - name: the outbox stops draining, then drains
+    interval: 1m
+    input_series:
+      - series: 'outbox_oldest_unpublished_age_seconds{job="services", instance="order-service:8083", service="order-service"}'
+        values: '0 90 150 210 270 0 0'
+    alert_rule_test:
+      - { eval_time: 2m, alertname: OutboxBacklogStuck, exp_alerts: [] }
+      - eval_time: 4m
+        alertname: OutboxBacklogStuck
+        exp_alerts:
+          - exp_labels: { severity: critical, job: services, service: order-service }
+            exp_annotations:
+              summary: "order-service has had an unpublished event for over a minute"
+              runbook: docs/runbooks/infra.md#outbox-backlog-stuck
+      - { eval_time: 6m, alertname: OutboxBacklogStuck, exp_alerts: [] }
+
+  - name: a message is dead-lettered; the alert clears once it is ten minutes old
+    interval: 1m
+    input_series:
+      - series: 'kafka_topic_partition_current_offset{job="kafka-exporter", topic="payment.events.v1.dlt", partition="0"}'
+        values: '0 0 1x16'
+    alert_rule_test:
+      - { eval_time: 1m, alertname: DeadLetterMessages, exp_alerts: [] }
+      - eval_time: 3m
+        alertname: DeadLetterMessages
+        exp_alerts:
+          - exp_labels: { severity: warning, topic: payment.events.v1.dlt }
+            exp_annotations:
+              summary: "New messages in payment.events.v1.dlt"
+              runbook: docs/runbooks/infra.md#dead-letter-messages
+      - { eval_time: 14m, alertname: DeadLetterMessages, exp_alerts: [] }
+
+  - name: a consumer falls behind, then catches up
+    interval: 1m
+    input_series:
+      - series: 'kafka_consumergroup_lag{job="kafka-exporter", consumergroup="order-service", topic="inventory.events.v1", partition="0"}'
+        values: '0 200x7 0x3'
+    alert_rule_test:
+      - { eval_time: 4m, alertname: ConsumerLagGrowing, exp_alerts: [] }
+      - eval_time: 7m
+        alertname: ConsumerLagGrowing
+        exp_alerts:
+          - exp_labels: { severity: warning, consumergroup: order-service, topic: inventory.events.v1 }
+            exp_annotations:
+              summary: "order-service is more than 100 messages behind on inventory.events.v1"
+              runbook: docs/runbooks/infra.md#consumer-lag-growing
+      - { eval_time: 10m, alertname: ConsumerLagGrowing, exp_alerts: [] }
+
+  - name: the order topic disappears, then is created again
+    interval: 1m
+    input_series:
+      - series: 'kafka_topic_partitions{job="kafka-exporter", topic="order.events.v1"}'
+        values: '6 6 stale _ _ _ _ 6 6'
+    alert_rule_test:
+      - { eval_time: 1m, alertname: KafkaTopicMissing, exp_alerts: [] }
+      - eval_time: 5m
+        alertname: KafkaTopicMissing
+        exp_alerts:
+          - exp_labels: { severity: warning, topic: order.events.v1 }
+            exp_annotations:
+              summary: "order.events.v1 does not exist; kafka-init may have failed"
+              runbook: docs/runbooks/infra.md#kafka-topic-missing
+      - { eval_time: 8m, alertname: KafkaTopicMissing, exp_alerts: [] }
+
+  - name: a saga is stuck past its last re-send, then its answer arrives
+    interval: 1m
+    input_series:
+      - series: 'saga_stuck{job="services", instance="order-service:8083", service="order-service"}'
+        values: '0 1x6 0 0'
+    alert_rule_test:
+      - { eval_time: 3m, alertname: SagaStuck, exp_alerts: [] }
+      - eval_time: 7m
+        alertname: SagaStuck
+        exp_alerts:
+          - exp_labels: { severity: critical, service: order-service }
+            exp_annotations:
+              summary: "1 checkout saga(s) stuck past their last re-send"
+              runbook: docs/runbooks/infra.md#an-order-is-stuck-in-checkout
+      - { eval_time: 9m, alertname: SagaStuck, exp_alerts: [] }
+
+  - name: sweeping a saga fails once
+    interval: 1m
+    input_series:
+      - series: 'saga_sweep_errors_total{job="services", instance="order-service:8083", service="order-service"}'
+        values: '0 0 1x16'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SagaSweepFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, service: order-service }
+            exp_annotations:
+              summary: "The saga sweeper failed to sweep a saga in the last 10 minutes"
+              runbook: docs/runbooks/infra.md#an-order-is-stuck-in-checkout
+      - { eval_time: 14m, alertname: SagaSweepFailing, exp_alerts: [] }
+
+  - name: a payment outcome stays unknown past the window, then is settled
+    interval: 1m
+    input_series:
+      - series: 'payment_reconciliation_oldest_age_seconds{job="services", instance="payment-service:8085", service="payment-service"}'
+        values: '0 1000x6 0 0'
+    alert_rule_test:
+      - { eval_time: 3m, alertname: PaymentReconciliationOverdue, exp_alerts: [] }
+      - eval_time: 7m
+        alertname: PaymentReconciliationOverdue
+        exp_alerts:
+          - exp_labels: { severity: critical, service: payment-service }
+            exp_annotations:
+              summary: "A payment outcome has been unknown for over 15 minutes"
+              runbook: docs/runbooks/infra.md#payments
+      - { eval_time: 9m, alertname: PaymentReconciliationOverdue, exp_alerts: [] }
+
+  - name: a late charge is refunded; the alert clears an hour later
+    interval: 1m
+    input_series:
+      - series: 'payment_late_charge_refunded_total{job="services", instance="payment-service:8085", service="payment-service"}'
+        values: '0 0 1x70'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: LateChargeRefunded
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "A charge landed after its order failed and was refunded"
+              runbook: docs/runbooks/infra.md#payments
+      - { eval_time: 65m, alertname: LateChargeRefunded, exp_alerts: [] }
+
+  - name: fault injection is switched on, then off
+    interval: 1m
+    input_series:
+      - series: 'messaging_chaos_failures_total{job="services", instance="inventory-service:8084", service="inventory-service", consumer="inventory.commands"}'
+        values: '0 0 3x9'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: FaultInjectionOn
+        exp_alerts:
+          - exp_labels: { severity: warning, service: inventory-service }
+            exp_annotations:
+              summary: "inventory-service is injecting consumer failures on purpose"
+              runbook: docs/runbooks/infra.md#fault-injection
+      - { eval_time: 9m, alertname: FaultInjectionOn, exp_alerts: [] }
+
+  - name: a service starts answering 500, then the bug is fixed
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="services", service="order-service", method="POST", uri="/api/v1/orders", status="500"}'
+        values: '0+10x10 100x10'
+      - series: 'http_server_requests_seconds_count{job="services", service="order-service", method="POST", uri="/api/v1/orders", status="202"}'
+        values: '0+100x20'
+    alert_rule_test:
+      - { eval_time: 3m, alertname: ServerErrors, exp_alerts: [] }
+      - eval_time: 8m
+        alertname: ServerErrors
+        exp_alerts:
+          - exp_labels: { severity: critical, service: order-service }
+            exp_annotations:
+              summary: "order-service: over 5 % of requests end in a 500"
+              runbook: docs/runbooks/infra.md#server-errors
+      - { eval_time: 17m, alertname: ServerErrors, exp_alerts: [] }
+
+  - name: product reads slow down to 300 ms or more, then speed up again
+    interval: 1m
+    input_series:
+      # Slow phase: every request takes between 0.1 and 0.5 s. Then every request takes under 0.1 s.
+      - series: 'http_server_requests_seconds_bucket{job="services", service="catalog-service", method="GET", uri="/api/v1/products", le="0.1"}'
+        values: '0x14 10+10x9'
+      - series: 'http_server_requests_seconds_bucket{job="services", service="catalog-service", method="GET", uri="/api/v1/products", le="0.5"}'
+        values: '0+10x24'
+      - series: 'http_server_requests_seconds_bucket{job="services", service="catalog-service", method="GET", uri="/api/v1/products", le="+Inf"}'
+        values: '0+10x24'
+    alert_rule_test:
+      - { eval_time: 5m, alertname: SlowReads, exp_alerts: [] }
+      - eval_time: 13m
+        alertname: SlowReads
+        exp_alerts:
+          - exp_labels: { severity: warning, service: catalog-service, uri: /api/v1/products }
+            exp_annotations:
+              summary: "catalog-service /api/v1/products: p95 above 300 ms"
+              runbook: docs/runbooks/infra.md#slow-reads
+      - { eval_time: 22m, alertname: SlowReads, exp_alerts: [] }

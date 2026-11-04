@@ -92,6 +92,23 @@ Most of the time nothing needs doing. The deadline sweeper (every 5 s) re-sends 
 - `PaymentReconciliationOverdue`: an outcome has been unknown for over 15 minutes, so the provider cannot be asked. Check the sandbox is up and not in a fault mode (above). `payment.reconcile.provider_unavailable` counts the failed lookups.
 - "Reconcile now": the admin payments page (or `POST /api/v1/admin/payments/{attemptId}/reconcile`) brings an attempt's next look forward to the reconciler's next round, within 10 s, for example once the sandbox is back. A settled attempt answers 409: there is nothing left to find. Each request is audited (`PAYMENT_RECONCILE_REQUESTED`).
 
+## Following one request
+
+Every log line carries `traceId`, `spanId` and `correlationId`, and with `--obs` every request is traced: one trace covers a checkout across the gateway, the services and each Kafka hop.
+
+1. From a problem response, take the correlation id; from a log line, the `traceId`.
+2. Grafana → Explore → Tempo: search by trace id, or with TraceQL, for example `{ resource.service.name = "payment-service" && status = error }`.
+3. Without `--obs` nothing is exported (`TRACING_EXPORT` is off). The ids are still in the logs: `C --profile apps logs <service> | grep <traceId>`.
+
+## Security scans
+
+`scripts/scan-security.sh` (CI: the `security` workflow, plus an image scan in `ci`):
+
+- **gitleaks** finds a secret in the git history: rotate it first (it is public once pushed), then remove it from history if it matters, and allowlist only a value that is provably not a secret, in `.gitleaks.toml` with the reason.
+- **Trivy** finds a HIGH or CRITICAL vulnerability with a fix: upgrade. For a library that comes in transitively, pin the fixed version in the parent pom's `dependencyManagement`, with the CVE, and remove the pin once the direct dependency moves. For an image, rebuild on a patched base. Accept a finding only in `.trivyignore`, with the reason and a review date.
+- **CodeQL** results are on GitHub under Security → Code scanning.
+- **The security suite** (`scripts/security-test.sh`) failing on logs or metrics means personal data reached a log line or an id became a metric label. Find the line it names, fix the cause, and do not widen the patterns.
+
 ## Fault injection
 
 Alert `FaultInjectionOn`: a service is failing consumer records on purpose. That is the failure-recovery tests' switch, `commerceflow.messaging.chaos.*`, which `deploy/compose/chaos.yml` wires to `CHAOS_CONSUMER_DELAY` and `CHAOS_CONSUMER_FAILURE_RATE`. It must never be on outside a test. Recreate the services without those variables: `COMMERCEFLOW_CHAOS=1 scripts/dev-up.sh --apps --chaos`, from a shell where neither is set.
@@ -103,6 +120,22 @@ Alert `FaultInjectionOn`: a service is failing consumer records on purpose. That
 3. Results are in `system-tests/target/failure-recovery/results.jsonl`, one line per scenario and run. `docs/reports/failure-recovery.md` is written from them.
 4. If a run is interrupted, put things back: `scripts/dev-up.sh --apps --chaos` restarts anything stopped and recreates the services with fault injection off. The sandbox fault and the Toxiproxy link are reset by the next run's setup.
 5. To stop a run, stop the test JVM too, not only the script and Maven. Failsafe forks it (`surefirebooter-*.jar`), and it outlives its parent and keeps killing containers. Two runs at once against one stack produce failures that mean nothing. On Windows, find it with `Get-CimInstance Win32_Process -Filter "name='java.exe'"` and check its parent is the system-tests Maven process before stopping it. Then reset as in step 4 and count runs from 1 again.
+
+## Server errors
+
+Alert `ServerErrors`: more than 5 % of a service's requests ended in `500` for 5 minutes. A `500` is a bug: a lost database answers `503` with `Retry-After`, and has its own alerts.
+
+1. Grafana → CommerceFlow / Service latency → "Server errors" shows which service, route and status.
+2. The service's log has the exception at ERROR (`Unhandled exception`), with the correlation id the client got in its problem response. Search the logs for that id: `C --profile apps logs <service> | grep <correlationId>`.
+3. Since Milestone 9 each log line also carries a trace id. With `--obs`, Grafana → Explore → Tempo finds the whole request across services by that id.
+
+## Slow reads
+
+Alert `SlowReads`: the 95th percentile of a catalogue or order read has been above 300 ms for 10 minutes (NFR-05).
+
+1. Grafana → CommerceFlow / Service latency, p95 and p99 by route. One route or all? All at once usually means the host or the database is overloaded (`docker stats`).
+2. Catalogue reads are served from Redis when warm; a cold or unreachable cache sends every read to Postgres. Check Redis is healthy.
+3. A trace of a slow request (Tempo, `--obs`) shows where the time went: the database, the cache, or another service.
 
 ## Consumer lag growing
 

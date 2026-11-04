@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 8 of 12.** A customer and admin web app (http://localhost:8000) sits on top: browse, cart, checkout with sandbox test cards, live order status, and admin pages for orders, stock, sagas, payments and dead letters. The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 9 of 12.** Every checkout is one trace across the gateway, the services and Kafka, and the Checkout and Service latency dashboards show it step by step, with percentiles rather than averages. Every alert is tested firing and clearing and links a runbook. A security suite runs against the live stack, and CI scans the code, the dependencies, the images and the git history; see [docs/security/SECURITY.md](docs/security/SECURITY.md). A customer and admin web app (http://localhost:8000) sits on top: browse, cart, checkout with sandbox test cards, live order status, and admin pages for orders, stock, sagas, payments and dead letters. The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
@@ -12,6 +12,7 @@ A distributed, event-driven commerce platform built to show how checkout stays c
 - **No overselling** under concurrent checkout: row locks taken in a fixed order, guarded updates, and database constraints that reject any write creating or losing stock
 - **Payment reconciliation** for timeouts and lost acknowledgements, against a self-hosted payment sandbox
 - **Observability**: traces across services and Kafka, consumer lag, outbox age, stuck-saga alerts
+- **Security tested, not only configured**: forged and expired tokens, cross-account access, replayed keys and refresh tokens, and personal data in logs and metrics, all checked against the running stack ([threat model](docs/security/SECURITY.md))
 
 ## Architecture
 
@@ -25,6 +26,7 @@ Requires Java 21, Docker, and (on Windows) Git for Windows. Maven is downloaded 
 scripts/dev-up.sh --obs --apps   # everything; creates .env and a local JWT key on first run
 scripts/check-infra.sh           # verifies every component, then a full flow through the gateway
 ./mvnw verify                    # build, unit, contract and integration tests (needs Docker)
+scripts/security-test.sh         # the security suite against the running stack
 scripts/dev-down.sh              # stop (add --volumes to delete local data)
 ```
 

@@ -5,6 +5,8 @@ import dev.commerceflow.messaging.PoisonMessageException;
 import dev.commerceflow.payment.payment.PaymentService;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +17,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 class PaymentCommandsListener {
+
+  private static final Logger log = LoggerFactory.getLogger(PaymentCommandsListener.class);
 
   private final InboundEvents inbound;
   private final PaymentService payments;
@@ -45,8 +49,11 @@ class PaymentCommandsListener {
                     event.text("currency"),
                     event.text("paymentToken"));
             case "CancelPayment" -> payments.cancel(event.uuid("orderId"));
-            default ->
-                meters.counter("payment.commands.unknown", "type", event.eventType()).increment();
+            default -> {
+              // The type goes to the log, not a metric label: labels must come from a bounded set.
+              meters.counter("payment.commands.unknown").increment();
+              log.warn("Unknown payment command type {}", event.eventType());
+            }
           }
         });
   }

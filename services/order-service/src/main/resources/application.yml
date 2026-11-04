@@ -45,6 +45,8 @@ spring:
         request.timeout.ms: 10000
         delivery.timeout.ms: 30000
     listener:
+      # Continues the trace from the traceparent each event carries (TraceHeaders).
+      observation-enabled: true
       ack-mode: record
       concurrency: 3
   lifecycle:
@@ -58,6 +60,37 @@ server:
     include-stacktrace: never
 
 management:
+  # One trace per checkout across every service and Kafka (NFR-08). Every request is sampled: this
+  # is a local, low-traffic system. Spans leave only when TRACING_EXPORT is on (dev-up --obs), so
+  # without the collector nothing retries an export endpoint that is not there.
+  tracing:
+    sampling:
+      probability: 1.0
+    export:
+      enabled: ${TRACING_EXPORT:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  # Logs stay on stdout (JSON, with trace and correlation ids); only traces go out over OTLP.
+  logging:
+    export:
+      otlp:
+        enabled: false
+  # Metrics are scraped by Prometheus (/actuator/prometheus); the starter's OTLP push would only
+  # retry a collector endpoint every minute and log a warning each time.
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  # Latency as a histogram with fixed buckets, so dashboards show percentiles (p95, p99), not
+  # averages. Nine buckets per route instead of the default ~70 keeps the series count low, and
+  # 300 ms (NFR-05, alert SlowReads) is one of the bucket edges, so it is measured exactly.
+  metrics:
+    distribution:
+      slo:
+        http.server.requests: 25ms,50ms,100ms,200ms,300ms,500ms,1s,2s,5s
   endpoints:
     web:
       exposure:
@@ -101,3 +134,9 @@ commerceflow:
     saga-max-resends: 5
     saga-resend-base: 10s
     saga-resend-max: 2m
+
+logging:
+  structured:
+    json:
+      # Secrets and personal data are masked in every JSON log line (INV-8; LogRedaction).
+      customizer: dev.commerceflow.security.RedactingLogCustomizer

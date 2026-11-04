@@ -30,6 +30,7 @@ public class SagaSweeper {
   private final OrderProperties properties;
   private final MeterRegistry meters;
   private final AtomicLong stuck = new AtomicLong();
+  private final Map<SagaState, AtomicLong> byState = new EnumMap<>(SagaState.class);
 
   SagaSweeper(SagaOrchestrator saga, OrderProperties properties, MeterRegistry meters) {
     this.saga = saga;
@@ -38,6 +39,15 @@ public class SagaSweeper {
     Gauge.builder("saga.stuck", stuck, AtomicLong::get)
         .description("Sagas past their last re-send in a step that has no way out")
         .register(meters);
+    // One series per state, a fixed set: what the saga dashboard shows waiting at each step.
+    for (SagaState state : SagaState.values()) {
+      AtomicLong count = new AtomicLong();
+      byState.put(state, count);
+      Gauge.builder("saga.instances", count, AtomicLong::get)
+          .tag("state", state.name())
+          .description("Sagas in this state, as of the last sweep")
+          .register(meters);
+    }
   }
 
   @Scheduled(
@@ -72,6 +82,8 @@ public class SagaSweeper {
       outcomes.merge(outcome, 1, Integer::sum);
     }
     stuck.set(saga.stuck());
+    Map<SagaState, Long> counts = saga.countByState();
+    byState.forEach((state, count) -> count.set(counts.getOrDefault(state, 0L)));
     return outcomes;
   }
 }

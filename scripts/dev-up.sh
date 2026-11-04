@@ -21,6 +21,8 @@ for arg in "$@"; do
     --obs)
       profiles+=(--profile obs)
       with_obs=true
+      # The collector runs, so the services can send it their traces.
+      export TRACING_EXPORT=true
       ;;
     --apps)
       profiles+=(--profile apps)

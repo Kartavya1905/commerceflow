@@ -102,8 +102,11 @@ class InventoryListeners {
                 outbox.append("InventoryReleased", AGGREGATE, orderId, Map.of("orderId", orderId));
               }
             }
-            default ->
-                meters.counter("inventory.commands.unknown", "type", event.eventType()).increment();
+            default -> {
+              // The type goes to the log, not a metric label: labels must come from a bounded set.
+              meters.counter("inventory.commands.unknown").increment();
+              log.warn("Unknown inventory command type {}", event.eventType());
+            }
           }
         });
   }

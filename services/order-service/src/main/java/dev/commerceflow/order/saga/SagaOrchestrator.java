@@ -97,7 +97,8 @@ public class SagaOrchestrator {
     Optional<SagaEvent> sagaEvent =
         SagaEvent.of(event.eventType(), event.payload().path("reason").asString(null));
     if (sagaEvent.isEmpty()) {
-      ignored("unknown_event", event.eventType());
+      // Not the type itself: a metric label must come from a bounded set.
+      ignored("unknown_event", "other");
       return;
     }
     apply(event.uuid("orderId"), sagaEvent.get(), event);
@@ -368,6 +369,16 @@ public class SagaOrchestrator {
         .param("max", properties.sagaMaxResends())
         .query(Long.class)
         .single();
+  }
+
+  /** How many sagas are in each state now; states with none are absent. */
+  @Transactional(readOnly = true)
+  public Map<SagaState, Long> countByState() {
+    Map<SagaState, Long> counts = new java.util.EnumMap<>(SagaState.class);
+    jdbc.sql("select state, count(*) as n from saga_instances group by state")
+        .query((rs, n) -> counts.put(SagaState.valueOf(rs.getString("state")), rs.getLong("n")))
+        .list();
+    return counts;
   }
 
   /** Sagas saved before the reason was recorded re-send with the reason their step implies. */

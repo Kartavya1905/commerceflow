@@ -107,3 +107,28 @@ groups:
         annotations:
           summary: "{{ $labels.service }} is injecting consumer failures on purpose"
           runbook: docs/runbooks/infra.md#fault-injection
+
+  - name: service-health
+    rules:
+      - alert: ServerErrors
+        # 500 is a bug. 503 is a dependency outage answered honestly, and has its own alerts.
+        expr: >-
+          sum by (service) (rate(http_server_requests_seconds_count{job="services", status="500"}[5m]))
+          / sum by (service) (rate(http_server_requests_seconds_count{job="services"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }}: over 5 % of requests end in a 500"
+          runbook: docs/runbooks/infra.md#server-errors
+
+      - alert: SlowReads
+        # NFR-05: p95 under 300 ms for the catalogue and order reads.
+        expr: >-
+          histogram_quantile(0.95, sum by (le, service, uri) (rate(http_server_requests_seconds_bucket{job="services", method="GET", uri=~"/api/v1/products.*|/api/v1/orders/[{]orderId[}]"}[5m]))) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} {{ $labels.uri }}: p95 above 300 ms"
+          runbook: docs/runbooks/infra.md#slow-reads

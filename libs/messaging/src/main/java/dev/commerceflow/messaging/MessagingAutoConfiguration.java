@@ -9,10 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaOperations;
@@ -40,8 +42,30 @@ public class MessagingAutoConfiguration {
       JdbcClient jdbc,
       EventContracts contracts,
       MessagingProperties properties,
-      ObjectProvider<Clock> clock) {
-    return new OutboxWriter(jdbc, contracts, properties, clock.getIfAvailable(Clock::systemUTC));
+      ObjectProvider<Clock> clock,
+      ObjectProvider<TraceHeaders> trace) {
+    return new OutboxWriter(
+        jdbc,
+        contracts,
+        properties,
+        clock.getIfAvailable(Clock::systemUTC),
+        trace.getIfAvailable(() -> TraceHeaders.NONE));
+  }
+
+  /** Only when Micrometer Tracing is on the classpath; without it, events carry no trace. */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(name = "io.micrometer.tracing.Tracer")
+  static class TracingConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(TraceHeaders.class)
+    TraceHeaders traceHeaders(
+        ObjectProvider<io.micrometer.tracing.Tracer> tracer,
+        ObjectProvider<io.micrometer.tracing.propagation.Propagator> propagator) {
+      var t = tracer.getIfAvailable();
+      var p = propagator.getIfAvailable();
+      return t == null || p == null ? TraceHeaders.NONE : new MicrometerTraceHeaders(t, p);
+    }
   }
 
   @Bean
@@ -65,11 +89,17 @@ public class MessagingAutoConfiguration {
       JdbcClient jdbc,
       TransactionTemplate tx,
       MessagingProperties properties,
+      EventContracts contracts,
       ObjectProvider<MeterRegistry> meters) {
     if (properties.chaos().active()) {
       log.warn("Fault injection is ON for every consumer: {}", properties.chaos());
     }
-    return new InboundEvents(jdbc, tx, registry(meters), properties.chaos());
+    return new InboundEvents(
+        jdbc,
+        tx,
+        registry(meters),
+        properties.chaos(),
+        type -> contracts.catalog().topicFor(type).isPresent());
   }
 
   @Bean

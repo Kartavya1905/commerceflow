@@ -17,6 +17,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>dev.commerceflow</groupId>
       <artifactId>security-tokens</artifactId>
     </dependency>
@@ -31,6 +36,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+    </dependency>
+    <!-- Traces over OTLP and trace ids in every log line (NFR-08). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

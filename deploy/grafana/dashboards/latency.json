@@ -1,0 +1,79 @@
+{
+  "uid": "cf-latency",
+  "title": "CommerceFlow / Service latency",
+  "description": "How fast each route answers, as percentiles from histograms (never averages, which hide the slow tail), with request and error rates. NFR-05: p95 under 300 ms on the read endpoints.",
+  "tags": ["commerceflow", "latency"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "label": "Service",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(http_server_requests_seconds_count{job=\"services\"}, service)", "refId": "service" },
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "p95 latency by route",
+      "description": "95 % of requests to the route answered within this time. Routes are URI templates (/api/v1/orders/{orderId}), never raw paths, so this stays a bounded set of series.",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service, method, uri) (rate(http_server_requests_seconds_bucket{job=\"services\", service=~\"$service\", uri!~\"/actuator.*\"}[5m])))", "legendFormat": "{{service}} {{method}} {{uri}}" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.3 } ] } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "p99 latency by route",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le, service, method, uri) (rate(http_server_requests_seconds_bucket{job=\"services\", service=~\"$service\", uri!~\"/actuator.*\"}[5m])))", "legendFormat": "{{service}} {{method}} {{uri}}" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Requests per second, by service",
+      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"services\", service=~\"$service\", uri!~\"/actuator.*\"}[2m]))", "legendFormat": "{{service}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Server errors (5xx) as a share of requests",
+      "description": "503 during a dependency outage is expected and says so to the client; 500 is a bug. Split by status so the two are not confused.",
+      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service, status) (rate(http_server_requests_seconds_count{job=\"services\", service=~\"$service\", status=~\"5..\"}[5m])) / ignoring(status) group_left sum by (service) (rate(http_server_requests_seconds_count{job=\"services\", service=~\"$service\"}[5m]))", "legendFormat": "{{service}} {{status}}" }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] }
+    }
+  ]
+}

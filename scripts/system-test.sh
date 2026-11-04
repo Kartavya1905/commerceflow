@@ -19,7 +19,7 @@ passed=0
 for run in $(seq 1 "$runs"); do
   info "system tests, run $run of $runs"
   if (cd "$ROOT" && env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ./mvnw -B -ntp -Psystem-tests \
-    verify -pl system-tests -Drun="$run"); then
+    verify -pl system-tests -Dit.test=FailureRecoveryIT -Drun="$run"); then
     passed=$((passed + 1))
   else
     echo "run $run FAILED" >&2

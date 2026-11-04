@@ -29,14 +29,25 @@ public class OutboxWriter {
   private final EventContracts contracts;
   private final MessagingProperties properties;
   private final Clock clock;
+  private final TraceHeaders trace;
   private final JsonMapper json = JsonMapper.builder().build();
 
   public OutboxWriter(
       JdbcClient jdbc, EventContracts contracts, MessagingProperties properties, Clock clock) {
+    this(jdbc, contracts, properties, clock, TraceHeaders.NONE);
+  }
+
+  public OutboxWriter(
+      JdbcClient jdbc,
+      EventContracts contracts,
+      MessagingProperties properties,
+      Clock clock,
+      TraceHeaders trace) {
     this.jdbc = jdbc;
     this.contracts = contracts;
     this.properties = properties;
     this.clock = clock;
+    this.trace = trace;
   }
 
   /**
@@ -110,9 +121,17 @@ public class OutboxWriter {
         .param("key", aggregateId.toString())
         .param("type", eventType)
         .param("envelope", text)
-        .param("headers", json.writeValueAsString(Map.of(CORRELATION_HEADER, correlationId)))
+        .param("headers", json.writeValueAsString(headers(correlationId)))
         .param("now", now)
         .update();
     return eventId;
+  }
+
+  /** The correlation id, and the trace context of the request that wrote the event. */
+  private Map<String, String> headers(String correlationId) {
+    Map<String, String> headers = new LinkedHashMap<>();
+    headers.put(CORRELATION_HEADER, correlationId);
+    trace.inject(headers);
+    return headers;
   }
 }

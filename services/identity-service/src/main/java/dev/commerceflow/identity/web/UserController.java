@@ -1,7 +1,7 @@
 package dev.commerceflow.identity.web;
 
 import com.nimbusds.jose.jwk.JWKSet;
-import dev.commerceflow.identity.user.UserRepository;
+import dev.commerceflow.identity.user.AccountService;
 import dev.commerceflow.web.ApiException;
 import java.time.Duration;
 import java.util.Map;
@@ -16,19 +16,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class UserController {
 
-  private final UserRepository users;
+  private final AccountService accounts;
   private final JWKSet publicJwkSet;
 
-  UserController(UserRepository users, JWKSet publicJwkSet) {
-    this.users = users;
+  UserController(AccountService accounts, JWKSet publicJwkSet) {
+    this.accounts = accounts;
     this.publicJwkSet = publicJwkSet;
   }
 
   /** The caller's own profile. The id comes from the token, never from the request. */
   @GetMapping("/api/v1/users/me")
   UserResponse me(@AuthenticationPrincipal Jwt jwt) {
-    return users
-        .findById(UUID.fromString(jwt.getSubject()))
+    return accounts
+        .profile(UUID.fromString(jwt.getSubject()))
         .map(UserResponse::of)
         .orElseThrow(() -> ApiException.notFound("User"));
   }

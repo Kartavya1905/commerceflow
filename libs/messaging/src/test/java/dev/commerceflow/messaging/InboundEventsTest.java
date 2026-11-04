@@ -82,6 +82,33 @@ class InboundEventsTest {
     assertThat(EventContext.causationId()).isNull();
   }
 
+  /** The review gate's cardinality rule: an unknown event type does not become a new series. */
+  @Test
+  void anEventTypeOutsideTheCatalogueIsCountedAsOther() {
+    InboundEvents bounded =
+        new InboundEvents(null, null, meters, Chaos.NONE, type -> type.equals("CancelPayment"));
+    bounded.handleUntransacted(record(UUID.randomUUID()), "bounded", event -> {});
+    assertThat(
+            meters
+                .counter(
+                    "messaging.consumed",
+                    "consumer",
+                    "bounded",
+                    "eventType",
+                    "other",
+                    "outcome",
+                    "processed")
+                .count())
+        .isEqualTo(1);
+    assertThat(
+            meters
+                .find("messaging.consumed")
+                .tag("eventType", "AuthorizePayment")
+                .tag("consumer", "bounded")
+                .counters())
+        .isEmpty();
+  }
+
   @Test
   void chaosIsOffByDefault() {
     assertThat(Chaos.NONE.active()).isFalse();

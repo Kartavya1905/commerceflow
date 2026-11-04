@@ -18,6 +18,11 @@
   <dependencies>
     <dependency>
       <groupId>dev.commerceflow</groupId>
+      <artifactId>test-support</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dev.commerceflow</groupId>
       <artifactId>security-tokens</artifactId>
     </dependency>
     <dependency>
@@ -35,6 +40,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <!-- Traces over OTLP, and the trace passed on to every service it routes to (NFR-08). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>

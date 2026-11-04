@@ -1,0 +1,10 @@
+# gitleaks (scripts/scan-security.sh secrets): the default rules. An allowance for a value that
+# only looks like a secret goes here, one regex per value, each with the reason it is safe; never a
+# whole file or folder.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "LogRedactionTest fixture: a made-up JWT whose signature is the word 'signature' in base64, signed by nothing"
+regexTarget = "match"
+regexes = ['''eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0\.eyJzdWIiOiIxMjMiLCJyb2xlcyI6WyJBRE1JTiJdfQ\.c2lnbmF0dXJl''']

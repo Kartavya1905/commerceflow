@@ -8,6 +8,9 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.30.6-alpine
+# The base image's Alpine packages, brought up to their patched versions at build time (Trivy:
+# brotli, curl and expat had fixed HIGH and CRITICAL vulnerabilities in the published image).
+RUN apk upgrade --no-cache
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html

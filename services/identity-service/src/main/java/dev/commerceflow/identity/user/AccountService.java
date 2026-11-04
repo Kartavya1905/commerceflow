@@ -4,6 +4,7 @@ import dev.commerceflow.identity.token.TokenService.IssuedTokens;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,11 @@ public class AccountService {
     this.ledger = ledger;
     this.clock = clock;
     this.dummyHash = passwordEncoder.encode("timing-equaliser-not-a-real-password");
+  }
+
+  /** The signed-in user's own account; the id always comes from their token. */
+  public Optional<User> profile(UUID userId) {
+    return users.findById(userId);
   }
 
   public User register(String email, String password, String displayName, Role role) {
