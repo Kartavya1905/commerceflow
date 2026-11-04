@@ -1,0 +1,36 @@
+# Scales catalog-service on CPU: the most-read service, and stateless (its cache is Redis).
+# Utilization is measured against the CPU request (250m), so 60 % is 150m per pod on average.
+# metrics-server provides the numbers (deploy/k8s/addons/metrics-server).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: catalog-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog-service
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      # Starting a JVM takes a while, so add up to two pods at a time rather than one.
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      # The default is 5 minutes of low load before removing pods. Two minutes still rides out a
+      # short lull, and keeps the experiment's scale-back visible in one run.
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30

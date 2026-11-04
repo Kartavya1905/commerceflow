@@ -1,0 +1,129 @@
+# One-off setup, as on Compose, from the same sources: the per-service databases and roles
+# (deploy/compose/postgres/create-service-databases.sh) and the topics from the contract catalogue
+# (contracts/.../topics.json). scripts/kind-up.sh puts those files into the postgres-init-script
+# and topic-catalog ConfigMaps, then runs these Jobs on every start; both are idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-init
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Waits for the server rather than failing and backing off while it starts.
+        - name: wait-for-postgres
+          image: postgres:18.6
+          command: [sh, -c, 'until pg_isready -h postgres -p 5432 -q; do sleep 2; done']
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 32Mi }
+          securityContext: &locked-down
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: postgres-init
+          image: postgres:18.6
+          command: [sh, /scripts/create-service-databases.sh]
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: POSTGRES_SUPERUSER
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: POSTGRES_SUPERUSER }
+            - name: POSTGRES_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: POSTGRES_SUPERUSER_PASSWORD }
+            - name: IDENTITY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: IDENTITY_DB_PASSWORD }
+            - name: CATALOG_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: CATALOG_DB_PASSWORD }
+            - name: ORDER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: ORDER_DB_PASSWORD }
+            - name: INVENTORY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: INVENTORY_DB_PASSWORD }
+            - name: PAYMENT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: PAYMENT_DB_PASSWORD }
+            - name: NOTIFICATION_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: NOTIFICATION_DB_PASSWORD }
+            - name: SANDBOX_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: SANDBOX_DB_PASSWORD }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 64Mi }
+          securityContext: *locked-down
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: postgres-init-script
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-init
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kafka-init
+          image: commerceflow/kafka-init:set-by-kind-up
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: kafka:9092
+            - name: TOPIC_CATALOG
+              value: /config/topics.json
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The Kafka command-line tools write their logs under the install directory.
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: catalog
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: catalog
+          configMap:
+            name: topic-catalog

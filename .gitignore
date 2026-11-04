@@ -37,3 +37,7 @@ Thumbs.db
 # Test and load-test output
 *.log
 load-tests/k6/results/
+
+# Kubernetes: rendered manifests (check-k8s.sh) and per-build image tags (kind-up.sh)
+deploy/k8s/.rendered/
+deploy/k8s/.generated/

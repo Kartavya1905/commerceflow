@@ -1,0 +1,113 @@
+# One Postgres server for every service's database, as on Compose (ADR-0006): kind stands in for a
+# managed database. The image's postgres user (999) runs it from the start, so the pod meets the
+# restricted Pod Security level; initdb creates the data directory itself, owned by that user.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:18.6
+          args:
+            - postgres
+            - -c
+            - max_connections=300
+            - -c
+            - shared_buffers=256MB
+            - -c
+            - log_lock_waits=on
+            - -c
+            - deadlock_timeout=1s
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: POSTGRES_SUPERUSER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: POSTGRES_SUPERUSER_PASSWORD }
+            - name: POSTGRES_DB
+              value: postgres
+            # Passwords for every TCP connection, as on Compose.
+            - name: POSTGRES_INITDB_ARGS
+              value: --auth-host=scram-sha-256
+          resources:
+            requests: { cpu: 250m, memory: 1Gi }
+            limits: { memory: 1Gi }
+          readinessProbe:
+            exec:
+              command: [sh, -c, 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d postgres']
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: { port: postgres }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+            # Postgres' shared memory; the container default (64 MB) is too small for its buffers.
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 256Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

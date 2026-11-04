@@ -2,7 +2,7 @@
 
 A distributed, event-driven commerce platform built to show how checkout stays correct when services crash, messages are duplicated, and many buyers race for the last item.
 
-> **Status: Milestone 9 of 12.** Every checkout is one trace across the gateway, the services and Kafka, and the Checkout and Service latency dashboards show it step by step, with percentiles rather than averages. Every alert is tested firing and clearing and links a runbook. A security suite runs against the live stack, and CI scans the code, the dependencies, the images and the git history; see [docs/security/SECURITY.md](docs/security/SECURITY.md). A customer and admin web app (http://localhost:8000) sits on top: browse, cart, checkout with sandbox test cards, live order status, and admin pages for orders, stock, sagas, payments and dead letters. The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
+> **Status: Milestone 10 of 12.** The same system also runs on local Kubernetes (kind), from one Kustomize base. Every pod meets the restricted Pod Security level, readiness checks only a pod's own database, and images are tagged by commit. On it, checkouts keep succeeding, once each, while a pod hangs and another is deleted, and a bad release is rolled back with no failed request; see [ADR-0015](docs/adr/0015-kubernetes-on-kind.md). Every checkout is one trace across the gateway, the services and Kafka, and the Checkout and Service latency dashboards show it step by step, with percentiles rather than averages. Every alert is tested firing and clearing and links a runbook. A security suite runs against the live stack, and CI scans the code, the dependencies, the images and the git history; see [docs/security/SECURITY.md](docs/security/SECURITY.md). A customer and admin web app (http://localhost:8000) sits on top: browse, cart, checkout with sandbox test cards, live order status, and admin pages for orders, stock, sagas, payments and dead letters. The whole checkout runs locally as an orchestrated saga over Kafka. An order reserves stock, is charged once by a self-hosted payment sandbox, and has its stock committed (CONFIRMED). If a step fails, the earlier steps are undone: a declined card releases the stock, and a failed commit refunds the charge and then releases. Recovery is automatic. A deadline sweeper re-sends a step whose answer is late, then compensates. A reconciler settles payments whose outcome was unknown, from the provider's records. Dead-lettered messages can be replayed. Nine failure scenarios run against the real stack (killed services, a stopped broker, a cut database link, every message delivered three times, injected consumer faults) and passed 5 runs in a row with every business invariant intact: [docs/reports/failure-recovery.md](docs/reports/failure-recovery.md). Performance numbers will appear here only once a report in `docs/reports/` backs them.
 
 ## What it demonstrates
 
@@ -31,6 +31,17 @@ scripts/dev-down.sh              # stop (add --volumes to delete local data)
 ```
 
 On Windows PowerShell use `.\scripts\dev-up.ps1 --obs --apps`, `.\scripts\check-infra.ps1` and `.\mvnw.cmd verify`. The web app is at http://localhost:8000 and the API at http://localhost:8080 (admin login: `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` in `.env`); `scripts/e2e.sh` runs the browser smoke test, Grafana at http://localhost:3000, Mailpit at http://localhost:8025. Troubleshooting: [docs/runbooks/infra.md](docs/runbooks/infra.md).
+
+On Kubernetes, with [kind](https://kind.sigs.k8s.io) installed:
+
+```bash
+scripts/kind-up.sh               # build, create the cluster, deploy; web app on :18000, API on :18080
+scripts/kind-chaos.sh            # checkouts while pods hang and are deleted
+scripts/kind-rollback.sh         # a bad release, then kubectl rollout undo
+scripts/kind-down.sh             # delete the cluster
+```
+
+Troubleshooting: [docs/runbooks/kubernetes.md](docs/runbooks/kubernetes.md).
 
 ## Project plan
 

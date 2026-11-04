@@ -1,0 +1,15 @@
+# kind's data stores and one-off setup. Applied before the applications, so they start against a
+# ready database and existing topics instead of crash-looping until then. A cloud environment uses
+# managed services instead and has no equivalent of this folder.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerceflow
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: commerceflow
+resources:
+  - ../../../namespace
+  - postgres.yaml
+  - kafka.yaml
+  - redis.yaml
+  - init-jobs.yaml

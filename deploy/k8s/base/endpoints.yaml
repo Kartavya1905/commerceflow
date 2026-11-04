@@ -1,0 +1,14 @@
+# Where the shared data stores are. The defaults are the in-cluster names the kind overlay runs; a
+# cloud overlay replaces this ConfigMap with its managed endpoints and changes nothing else.
+# Passwords are not here: they are in the commerceflow-secrets Secret, which is created from the
+# local .env by scripts/kind-up.sh and never committed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: endpoints
+data:
+  POSTGRES_HOST: postgres
+  KAFKA_BOOTSTRAP: kafka:9092
+  REDIS_HOST: redis
+  # Spans are exported only where a collector runs; none does on kind.
+  TRACING_EXPORT: "false"

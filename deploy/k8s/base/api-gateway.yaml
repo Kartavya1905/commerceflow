@@ -1,0 +1,122 @@
+# api-gateway: the one public entry point. Probes use the management port (8090), which no Service
+# exposes.
+# Same shape as every Spring Boot service; identity-service.yaml explains each setting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app.kubernetes.io/name: api-gateway
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api-gateway
+        app.kubernetes.io/part-of: commerceflow
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api-gateway
+          image: commerceflow/api-gateway:set-by-kind-up
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8090
+          env:
+            - name: IDENTITY_URI
+              value: http://identity-service:8081
+            - name: CATALOG_URI
+              value: http://catalog-service:8082
+            - name: ORDER_URI
+              value: http://order-service:8083
+            - name: INVENTORY_URI
+              value: http://inventory-service:8084
+            - name: PAYMENT_URI
+              value: http://payment-service:8085
+            - name: JWK_SET_URI
+              value: http://identity-service:8081/.well-known/jwks.json
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: REDIS_HOST }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: REDIS_PASSWORD }
+            # The web app's nginx pods, by a headless Service whose name resolves to their pod
+            # addresses: the one proxy whose X-Forwarded-For the rate limits believe.
+            - name: GATEWAY_TRUSTED_PROXIES
+              value: web-proxies
+            - name: TRACING_EXPORT
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: TRACING_EXPORT }
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { memory: 768Mi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            periodSeconds: 5
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: api-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway

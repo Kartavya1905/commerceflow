@@ -1,0 +1,17 @@
+# The local cluster: one kind node (a container) running Kubernetes. Created by scripts/kind-up.sh.
+# The NodePorts of the web app and the gateway are mapped to the host, on 127.0.0.1 only, so
+# nothing is reachable from your network.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: commerceflow
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30000
+        hostPort: 18000
+        listenAddress: 127.0.0.1
+        protocol: TCP
+      - containerPort: 30080
+        hostPort: 18080
+        listenAddress: 127.0.0.1
+        protocol: TCP

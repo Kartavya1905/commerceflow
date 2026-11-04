@@ -1,0 +1,116 @@
+# catalog-service: products and prices. Scaled by CPU (catalog-hpa.yaml).
+# Same shape as every Spring Boot service; identity-service.yaml explains each setting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  labels:
+    app.kubernetes.io/name: catalog-service
+spec:
+  # No replicas field: the HorizontalPodAutoscaler (catalog-hpa.yaml) owns the count, and an
+  # apply must not reset it.
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: catalog-service
+        app.kubernetes.io/part-of: commerceflow
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: catalog-service
+          image: commerceflow/catalog-service:set-by-kind-up
+          ports:
+            - name: http
+              containerPort: 8082
+          env:
+            - name: PORT
+              value: "8082"
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: POSTGRES_HOST }
+            - name: CATALOG_DB_URL
+              value: jdbc:postgresql://$(POSTGRES_HOST):5432/catalog_db
+            - name: CATALOG_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: CATALOG_DB_PASSWORD }
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: REDIS_HOST }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: REDIS_PASSWORD }
+            - name: JWK_SET_URI
+              value: http://identity-service:8081/.well-known/jwks.json
+            - name: TRACING_EXPORT
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: TRACING_EXPORT }
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { memory: 768Mi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  selector:
+    app.kubernetes.io/name: catalog-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: catalog-service
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-service

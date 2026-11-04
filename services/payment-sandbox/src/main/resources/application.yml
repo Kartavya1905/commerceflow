@@ -30,6 +30,15 @@ management:
     health:
       probes:
         enabled: true
+      # Readiness covers only what this pod needs to serve: its own database. Kafka is left out on
+      # purpose, so a broker blip cannot take every pod out of service at once; the outbox holds
+      # events until it is back. Liveness covers the process only, so a dependency outage never
+      # gets the pod restarted.
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
 
 sandbox:
   # Like a provider's secret key. Not a real credential: generated per environment into .env.

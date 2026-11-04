@@ -119,6 +119,13 @@ management:
     health:
       probes:
         enabled: true
+      # The gateway serves as long as it runs: a backend that is down fails only its own routes,
+      # and the others keep working. Liveness is the process only.
+      group:
+        readiness:
+          include: readinessState
+        liveness:
+          include: livenessState
   health:
     redis:
       enabled: false

@@ -1,0 +1,8 @@
+# Rendered to /tmp/upstream.conf when the container starts (the nginx image's envsubst step).
+# NGINX_LOCAL_RESOLVERS is the DNS server from the container's /etc/resolv.conf, which is right on
+# Compose and Kubernetes alike. GATEWAY_ADDRESS defaults to Compose's in the Dockerfile; nginx's
+# resolver ignores search domains, so Kubernetes sets the gateway's full name.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+map "" $gateway {
+  default http://${GATEWAY_ADDRESS};
+}

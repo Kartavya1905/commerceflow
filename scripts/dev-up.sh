@@ -39,31 +39,7 @@ for arg in "$@"; do
   esac
 done
 
-# --- 1. .env: create it, or add keys that appeared in .env.example since it was created --------
-ensure_env_file() {
-  if [[ ! -f "$ENV_FILE" ]]; then
-    : > "$ENV_FILE"
-    info "Creating .env with random local passwords (git-ignored)"
-  fi
-
-  local line key value added=0
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" =~ ^([A-Z0-9_]+)=(.*)$ ]] || continue
-    key="${BASH_REMATCH[1]}"
-    value="${BASH_REMATCH[2]}"
-    grep -q "^$key=" "$ENV_FILE" && continue
-    [[ "$value" == CHANGE_ME* ]] && value="$(random_secret)"
-    echo "$key=$value" >> "$ENV_FILE"
-    added=$((added + 1))
-  done < "$ROOT/.env.example"
-  ((added == 0)) || info "Added $added setting(s) to .env"
-
-  local placeholders
-  placeholders=$(grep -E '^[A-Z0-9_]+=CHANGE_ME' "$ENV_FILE" | cut -d= -f1 | tr '\n' ' ' || true)
-  [[ -z "$placeholders" ]] || die ".env still has placeholder values for: $placeholders"
-}
-
-# --- 2. Ports: fail early with a clear message instead of a cryptic bind error -----------------
+# --- 1. Ports: fail early with a clear message instead of a cryptic bind error -----------------
 check_ports() {
   local ports=(5432 9092 6379 1025 8025)
   ! $with_obs || ports+=(4317 4318 9090 3000)
@@ -84,35 +60,7 @@ check_ports() {
     die "port(s) ${busy[*]} are already used by another program (see docs/runbooks/infra.md#port-already-in-use)."
 }
 
-# --- 3. JWT signing key: a local throwaway key, never committed ---------------------------------
-ensure_jwt_key() {
-  local key="$ROOT/secrets/jwt-private.pem"
-  [[ -s "$key" ]] && return 0
-  command -v openssl > /dev/null 2>&1 ||
-    die "openssl is needed to create the local JWT key (Git for Windows and Linux include it)"
-  mkdir -p "$ROOT/secrets"
-  info "Creating a local JWT signing key in secrets/ (git-ignored)"
-  # genpkey writes PKCS#8, the format identity-service expects.
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$key" 2> /dev/null
-  # The container runs as an unprivileged user (uid 10001) and reads this through a bind mount,
-  # so it must be readable by others. Acceptable for a local development key only; a real
-  # deployment uses a secret store (Kubernetes Secret, AWS Secrets Manager).
-  chmod 0644 "$key"
-}
-
-# --- 4. Service jars, built on the host and copied into images ---------------------------------
-build_jars() {
-  info "Building service jars (tests are run separately with ./mvnw verify)"
-  # mvnw is a bash script that hands /c/... classpath entries to the Windows java.exe, which
-  # needs Git Bash's path conversion. common.sh turns that off for docker, so undo it here.
-  # forceCreation: a service whose own classes did not change would otherwise keep its old jar,
-  # with the old copies of libraries that did change (and Spring Boot skips repackaging it).
-  (cd "$ROOT" && env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ./mvnw -B -ntp -q package \
-    -DskipTests -Dmaven.jar.forceCreation=true -pl services/identity-service,services/catalog-service,services/order-service,services/inventory-service,services/payment-sandbox,services/payment-service,services/api-gateway -am) ||
-    die "the Maven build failed; run ./mvnw package -DskipTests to see why"
-}
-
-# --- 5. Start and wait -------------------------------------------------------------------------
+# --- 2. Start and wait -------------------------------------------------------------------------
 require_docker
 ensure_env_file
 ensure_jwt_key

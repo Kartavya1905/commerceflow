@@ -1,0 +1,11 @@
+# Every CommerceFlow workload runs here. "restricted" is the strictest Pod Security level: pods must
+# run as a non-root user, drop all Linux capabilities, forbid privilege escalation and use the
+# default seccomp profile. The API server refuses any pod that does not.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: commerceflow
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted

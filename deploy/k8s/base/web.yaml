@@ -1,0 +1,107 @@
+# web: the built frontend behind nginx, proxying /api to the gateway so the browser sees one origin.
+# nginx asks the cluster DNS (from the pod's resolv.conf) for the gateway's full name every 10 s;
+# its resolver ignores search domains, hence GATEWAY_ADDRESS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/part-of: commerceflow
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        # The nginx image's own unprivileged user.
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: commerceflow/web:set-by-kind-up
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: GATEWAY_ADDRESS
+              value: api-gateway.commerceflow.svc.cluster.local:8080
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 128Mi }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            # The one writable place: the rendered upstream.conf, the pid file and temp files.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Headless: its name resolves to the nginx pods' own addresses, which is what the gateway sees as
+# the peer of a proxied request. The gateway re-resolves it every 30 s, so new pods are trusted.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-proxies
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web

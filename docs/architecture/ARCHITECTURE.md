@@ -722,7 +722,7 @@ Versions were checked against Maven Central and official release pages on 2026-1
 | Build | Maven multi-module with the Maven Wrapper | Maven 3.9.x | One command builds everything; no global install | Gradle |
 | Formatting | Spotless + google-java-format | 3.10.x | Formatting check in CI | Checkstyle-only |
 | Frontend | React + TypeScript + Vite | pinned in M8 | Required | — |
-| Orchestration | kind | pinned in M10 | Runs Kubernetes in Docker | minikube (also fine; kind starts faster and works well in CI) |
+| Orchestration | kind | 0.33.0 (Kubernetes 1.36.4) | Runs Kubernetes in Docker | minikube (also fine; kind starts faster and works well in CI) |
 | IaC | Terraform | pinned in M11 | Required | — |
 | CI | GitHub Actions on a public repository | — | Free for public repositories | — |
 | Security scanning | Trivy, gitleaks, CodeQL | pinned in M9 | Free for public repositories | Paid SaaS scanners |

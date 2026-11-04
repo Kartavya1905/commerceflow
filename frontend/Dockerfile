@@ -13,6 +13,12 @@ FROM nginx:1.30.6-alpine
 RUN apk upgrade --no-cache
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/upstream.conf.template /etc/nginx/templates/upstream.conf.template
+# The template above is rendered into /tmp at start, the one writable place (read-only root on
+# Kubernetes). The DNS server comes from /etc/resolv.conf; the gateway address is overridable.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    NGINX_ENVSUBST_OUTPUT_DIR=/tmp \
+    GATEWAY_ADDRESS=api-gateway:8080
 COPY --from=build /app/dist /usr/share/nginx/html
 # The default site config would listen on 80, which an unprivileged user cannot.
 RUN rm -f /etc/nginx/conf.d/default.conf

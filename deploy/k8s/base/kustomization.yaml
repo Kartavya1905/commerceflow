@@ -1,0 +1,23 @@
+# CommerceFlow's applications, the same for every environment (ADR-0015). An overlay adds where
+# the data stores are, how traffic gets in, and which image tags run.
+#
+# Secrets are not here: scripts/kind-up.sh creates commerceflow-secrets (from .env) and
+# jwt-private-key (from secrets/jwt-private.pem) in the cluster. Nothing secret is in Git.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerceflow
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: commerceflow
+resources:
+  - ../namespace
+  - endpoints.yaml
+  - identity-service.yaml
+  - catalog-service.yaml
+  - catalog-hpa.yaml
+  - order-service.yaml
+  - inventory-service.yaml
+  - payment-sandbox.yaml
+  - payment-service.yaml
+  - api-gateway.yaml
+  - web.yaml

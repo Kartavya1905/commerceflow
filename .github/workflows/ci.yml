@@ -69,7 +69,7 @@ jobs:
 
   shell-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - name: ShellCheck
@@ -81,6 +81,10 @@ jobs:
       # Every alert links a runbook section that exists, and fires and clears in promtool's tests.
       - name: Alert rules
         run: bash scripts/check-alerts.sh
+      # The Kubernetes manifests: valid against the API schema, and free of the M10 gate defects
+      # (latest tags, committed Secrets, missing limits, probes or disruption budgets).
+      - name: Kubernetes manifests
+        run: bash scripts/check-k8s.sh
 
   # Brings up the whole local stack on the runner and runs every infrastructure check.
   infra:
@@ -138,3 +142,58 @@ jobs:
       - name: Tear down
         if: always()
         run: bash scripts/dev-down.sh --volumes --yes
+
+  # The same system on Kubernetes (kind): deployed by kind-up, then the smoke test, pods failing
+  # mid-checkout, and a bad release rolled back. The HPA experiment runs locally only: it takes ten
+  # minutes and its timing depends on the machine (docs/reports/hpa-experiment.md).
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: shell-lint
+    env:
+      KIND_VERSION: v0.33.0
+      KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install kind (pinned, checksum verified)
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kind" "https://kind.sigs.k8s.io/dl/$KIND_VERSION/kind-linux-amd64"
+          echo "$KIND_SHA256  $RUNNER_TEMP/kind" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version
+
+      - name: Deploy to kind
+        run: |
+          set -o pipefail
+          bash scripts/kind-up.sh 2>&1 | tee "$RUNNER_TEMP/kind-up.log"
+
+      - name: Web app smoke test against kind
+        run: E2E_BASE_URL=http://localhost:18000 bash scripts/e2e.sh
+
+      - name: Checkouts while pods hang and are deleted
+        run: bash scripts/kind-chaos.sh
+
+      - name: Bad release and rollback
+        run: bash scripts/kind-rollback.sh
+
+      # Annotations are readable on the run page and through the API without opening the log.
+      - name: Failing pods as annotations
+        if: failure()
+        run: bash scripts/ci-report-kind.sh "$RUNNER_TEMP/kind-up.log"
+
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context kind-commerceflow -n commerceflow get pods -o wide || true
+          kubectl --context kind-commerceflow -n commerceflow get events --sort-by=.lastTimestamp | tail -60 || true
+
+      - name: Tear down
+        if: always()
+        run: bash scripts/kind-down.sh

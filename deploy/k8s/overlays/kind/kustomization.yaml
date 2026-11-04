@@ -1,0 +1,13 @@
+# The applications on kind. The data stores are in infra/, applied first by scripts/kind-up.sh,
+# which also sets every image to the tag of the commit it was built from (never "latest").
+#
+# Traffic gets in through NodePorts that the kind node maps to the host
+# (deploy/k8s/kind/cluster.yaml), so no ingress controller is needed: the web app on
+# http://localhost:18000 and the gateway on http://localhost:18080. They differ from Compose's
+# 8000 and 8080, so both can run at once.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - path: nodeports.yaml

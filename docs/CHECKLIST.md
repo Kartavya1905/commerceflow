@@ -190,7 +190,34 @@ Found during this milestone:
 - The OpenTelemetry starter also pushed metrics over OTLP to nothing and logged a warning every minute. That push is off; Prometheus scrapes.
 - `LogRedactionIT` passed alone but saw plain-text logs in the full build, because an earlier test context had configured logging for the JVM. It now resets logging first.
 
-## Milestones 10–12
+## Milestone 10 — Kubernetes on kind
+
+- [x] Kustomize: one base for the eight applications (Deployments, Services, PodDisruptionBudgets, the catalog HPA, an `endpoints` ConfigMap), a kind overlay (NodePorts on 127.0.0.1:18000 and :18080), and kind's data stores (Postgres, single-broker KRaft Kafka and Redis as StatefulSets, plus the two setup Jobs from the same script and topic catalogue as Compose) (ADR-0015)
+- [x] `scripts/kind-up.sh`: builds the images, tags them with the commit, creates the cluster (kind 0.33.0, Kubernetes 1.36.4 pinned by digest), loads the images, and creates the Secrets from `.env`. It applies the data stores, waits for them and the setup Jobs, then applies the applications and waits for every rollout. `kind-down.sh` removes it all
+- [x] Gate, readiness: each service's readiness is its own database only, the gateway's nothing but its own state, and liveness is the process only, with a startup probe for the JVM's start. Same on Compose: with Postgres stopped, readiness answered 503 and liveness 200; with Kafka stopped, nothing changed
+- [x] Gate, limits: memory request = limit on every container, the heap sized from it (`MaxRAMPercentage=75`), a CPU request and no CPU limit
+- [x] Gate, Secrets: none in Git. `commerceflow-secrets` and `jwt-private-key` are created from local files, through a private file and never a command line
+- [x] Gate, tags: the commit hash (plus a timestamp for a checkout with changes), never `latest`
+- [x] `scripts/check-k8s.sh` (CI): kubeconform, strict, against Kubernetes 1.36.4: 74 objects valid. Policy checks for every gate item, plus probes, disruption budgets, non-root pods and no service links or tokens. Mutation checks: 8 of 8 caught (a `latest` tag, an untagged image, no memory limit, a committed Secret, a missing PDB, readiness on Kafka, no readiness probe, privilege escalation)
+- [x] Hardening: the namespace enforces the restricted Pod Security level, and all 16 pods run under it, the data stores included
+- [x] Smoke test against kind: Playwright 4 of 4 through http://localhost:18000
+- [x] Pod failures mid-checkout (`scripts/kind-chaos.sh`): 90 checkouts through the gateway while one order-service pod hangs (SIGSTOP) and the payment-service pod is deleted. Both runs of the final test gave 90 orders, exactly one per Idempotency-Key, all CONFIRMED. In one of them a checkout reached the hung pod, timed out and was retried with its key. Readiness took the hung pod out of the Service; liveness restarted it about 70 s later
+- [x] Rollback (`scripts/kind-rollback.sh`): a release whose pods never become ready, then `kubectl rollout undo`. The old pod served throughout: 121 requests through the gateway, 0 failed, and the previous image restored
+- [x] HPA experiment with real numbers: [docs/reports/hpa-experiment.md](reports/hpa-experiment.md). At 200 requests/s, catalog went 1 → 4 pods in 154 s and back to 1 within 150 s of the load ending, with 52,499 requests and none failed
+- [x] Docs: ADR-0015, [runbooks/kubernetes.md](runbooks/kubernetes.md), README
+- [ ] CI green on GitHub, including the new `kind` job
+- [ ] Tag `m10-done`
+
+Found during this milestone:
+- nginx was hardwired to Docker's DNS server (127.0.0.11), which does not exist on Kubernetes. It now takes the resolver from the pod's `/etc/resolv.conf`, on both, and the gateway's address from the environment.
+- Kubernetes' service-link variables would have set `REDIS_PORT=tcp://10.96.…:6379` in every pod, which the services read as Redis' port. They are off in every pod.
+- `kind load docker-image` fails on public images under Docker Desktop's containerd image store, which keeps one platform of a multi-platform image. They are now saved for the node's platform and loaded as an archive.
+- Deleting a pod, even forcibly, takes it out of its Service before its container dies. A plain crash is just as gentle, because the kubelet sees the exit at once. In neither case did a request reach the dying pod, so the test hangs a pod instead: the case that needs client retries.
+- The first HPA run's load generator was OOMKilled, keeping every response body, and the load ended early without a summary. The experiment now uses a fixed request rate, discards bodies, and fails when the generator does not finish.
+- The rollback probe first reported half its requests failed. Windows' curl, with Git Bash's path conversion off, could not open `/dev/null` and failed after each successful request. It now writes to a real file.
+- A cold catalog-service needed about four times the CPU per request of a warm one, so the autoscaler scaled to its maximum on warm-up cost. Recorded in the HPA report.
+
+## Milestones 11–12
 
 Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 

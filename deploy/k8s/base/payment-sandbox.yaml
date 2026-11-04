@@ -1,0 +1,107 @@
+# payment-sandbox: the card provider stand-in. Reachable only inside the cluster.
+# Same shape as every Spring Boot service; identity-service.yaml explains each setting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-sandbox
+  labels:
+    app.kubernetes.io/name: payment-sandbox
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-sandbox
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payment-sandbox
+        app.kubernetes.io/part-of: commerceflow
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: payment-sandbox
+          image: commerceflow/payment-sandbox:set-by-kind-up
+          ports:
+            - name: http
+              containerPort: 8099
+          env:
+            - name: PORT
+              value: "8099"
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef: { name: endpoints, key: POSTGRES_HOST }
+            - name: SANDBOX_DB_URL
+              value: jdbc:postgresql://$(POSTGRES_HOST):5432/sandbox_db
+            - name: SANDBOX_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: SANDBOX_DB_PASSWORD }
+            - name: SANDBOX_API_KEY
+              valueFrom:
+                secretKeyRef: { name: commerceflow-secrets, key: SANDBOX_API_KEY }
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 512Mi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-sandbox
+spec:
+  selector:
+    app.kubernetes.io/name: payment-sandbox
+  ports:
+    - name: http
+      port: 8099
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-sandbox
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-sandbox
