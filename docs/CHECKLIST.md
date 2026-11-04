@@ -180,8 +180,8 @@ Added after the tag: `POST /api/v1/admin/payments/{attemptId}/reconcile` ("recon
 - [x] `docs/security/SECURITY.md`: assets, trust boundaries, and every threat mapped to its control and test. ADR-0014
 - [x] Mutation checks: 5 of 5 caught (trace context not stored with the event, unbounded event-type label, redaction switched off, emails left unmasked, a controller holding `JdbcClient`)
 - [x] Full Maven build: 567 tests, 0 failures. Against the stack: check-infra 144, Playwright smoke 4, `SecurityIT` 12, image scan clean
-- [ ] CI green on GitHub
-- [ ] Tag `m9-done`
+- [x] CI green on GitHub (run 41791801784 on ba7187a, which contains this milestone. The first run, 41775565304 on d3e7e67, failed in the `infra` job: a container never became healthy within dev-up's 240 s on the runner, and the log that names it needs a login. A fresh stack started cleanly locally and the next run passed with no service change. CI now posts unhealthy containers as annotations, so a repeat names the container)
+- [x] Tag `m9-done` (on ba7187a)
 
 Found during this milestone:
 - Trivy found HIGH and CRITICAL vulnerabilities with fixes: in the Kafka client's compression libraries (`lz4-java`, `snappy-java`), now pinned in the parent pom, and in the nginx image's Alpine packages (brotli, curl, libexpat), upgraded at build time. The kafka-init image ran as root; it no longer does.
