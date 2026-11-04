@@ -205,8 +205,8 @@ Found during this milestone:
 - [x] Rollback (`scripts/kind-rollback.sh`): a release whose pods never become ready, then `kubectl rollout undo`. The old pod served throughout: 121 requests through the gateway, 0 failed, and the previous image restored
 - [x] HPA experiment with real numbers: [docs/reports/hpa-experiment.md](reports/hpa-experiment.md). At 200 requests/s, catalog went 1 → 4 pods in 154 s and back to 1 within 150 s of the load ending, with 52,499 requests and none failed
 - [x] Docs: ADR-0015, [runbooks/kubernetes.md](runbooks/kubernetes.md), README
-- [ ] CI green on GitHub, including the new `kind` job
-- [ ] Tag `m10-done`
+- [x] CI green on GitHub, including the new `kind` job (deploy, smoke, pod failures and rollback on the runner): ci run 41918946329 and security run 41918946301 on fcdbe20, both first attempt. The first push, 0812dce, passed ci but failed the security scan (below)
+- [x] Tag `m10-done` (on fcdbe20)
 
 Found during this milestone:
 - nginx was hardwired to Docker's DNS server (127.0.0.11), which does not exist on Kubernetes. It now takes the resolver from the pod's `/etc/resolv.conf`, on both, and the gateway's address from the environment.
