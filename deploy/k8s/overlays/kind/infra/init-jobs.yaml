@@ -115,15 +115,23 @@ spec:
             limits: { memory: 384Mi }
           securityContext:
             allowPrivilegeEscalation: false
-            # The Kafka command-line tools write their logs under the install directory.
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
           volumeMounts:
             - name: catalog
               mountPath: /config
               readOnly: true
+            # The Kafka command-line tools write their logs under the install directory.
+            - name: logs
+              mountPath: /opt/kafka/logs
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: catalog
           configMap:
             name: topic-catalog
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

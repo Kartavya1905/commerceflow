@@ -34,18 +34,20 @@ secrets() {
 }
 
 filesystem() {
-  info "Trivy: npm dependencies, Dockerfile and Compose misconfiguration, secrets"
+  info "Trivy: npm dependencies, Dockerfile, Compose and Kubernetes misconfiguration, secrets"
   # Java dependencies are scanned in the images, from the exact jars each service ships. Reading
   # them from pom.xml here would download the whole dependency tree from Maven Central, which
   # rate-limits a scan like that (HTTP 429) and adds nothing the image scan does not already cover.
   # secrets/ and .env are git-ignored and exist only on a developer's machine, by design; gitleaks
-  # checks that no secret was ever committed.
+  # checks that no secret was ever committed. deploy/k8s/.rendered and .generated are git-ignored
+  # build output (check-k8s.sh, kind-up.sh); the manifests they come from are scanned.
   trivy "$TRIVY_IMAGE" fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL \
     --skip-version-check --skip-files '**/pom.xml' \
     --ignore-unfixed --ignorefile /repo/.trivyignore --timeout 20m --skip-dirs /repo/.git \
     --skip-dirs /repo/frontend/node_modules --skip-dirs /repo/frontend/dist \
     --skip-dirs /repo/secrets --skip-files /repo/.env \
-    --skip-dirs '/repo/**/target' --exit-code 1 --no-progress /repo || failed=1
+    --skip-dirs '/repo/**/target' --skip-dirs /repo/deploy/k8s/.rendered \
+    --skip-dirs /repo/deploy/k8s/.generated --exit-code 1 --no-progress /repo || failed=1
 }
 
 images() {

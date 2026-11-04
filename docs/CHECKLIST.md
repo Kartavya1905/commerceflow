@@ -199,7 +199,7 @@ Found during this milestone:
 - [x] Gate, Secrets: none in Git. `commerceflow-secrets` and `jwt-private-key` are created from local files, through a private file and never a command line
 - [x] Gate, tags: the commit hash (plus a timestamp for a checkout with changes), never `latest`
 - [x] `scripts/check-k8s.sh` (CI): kubeconform, strict, against Kubernetes 1.36.4: 74 objects valid. Policy checks for every gate item, plus probes, disruption budgets, non-root pods and no service links or tokens. Mutation checks: 8 of 8 caught (a `latest` tag, an untagged image, no memory limit, a committed Secret, a missing PDB, readiness on Kafka, no readiness probe, privilege escalation)
-- [x] Hardening: the namespace enforces the restricted Pod Security level, and all 16 pods run under it, the data stores included
+- [x] Hardening: the namespace enforces the restricted Pod Security level, and all 16 pods run under it, the data stores included. Every root filesystem is read-only, Kafka's too (its config and log directories are emptyDirs)
 - [x] Smoke test against kind: Playwright 4 of 4 through http://localhost:18000
 - [x] Pod failures mid-checkout (`scripts/kind-chaos.sh`): 90 checkouts through the gateway while one order-service pod hangs (SIGSTOP) and the payment-service pod is deleted. Both runs of the final test gave 90 orders, exactly one per Idempotency-Key, all CONFIRMED. In one of them a checkout reached the hung pod, timed out and was retried with its key. Readiness took the hung pod out of the Service; liveness restarted it about 70 s later
 - [x] Rollback (`scripts/kind-rollback.sh`): a release whose pods never become ready, then `kubectl rollout undo`. The old pod served throughout: 121 requests through the gateway, 0 failed, and the previous image restored
@@ -214,6 +214,7 @@ Found during this milestone:
 - `kind load docker-image` fails on public images under Docker Desktop's containerd image store, which keeps one platform of a multi-platform image. They are now saved for the node's platform and loaded as an archive.
 - Deleting a pod, even forcibly, takes it out of its Service before its container dies. A plain crash is just as gentle, because the kubelet sees the exit at once. In neither case did a request reach the dying pod, so the test hangs a pod instead: the case that needs client retries.
 - The first HPA run's load generator was OOMKilled, keeping every response body, and the load ended early without a summary. The experiment now uses a fixed request rate, discards bodies, and fails when the generator does not finish.
+- The first push failed the security workflow: Trivy's misconfiguration scan flagged a writable root filesystem on Kafka and its topic Job (HIGH, KSV-0014). Both are read-only now; the image writes the broker's configuration into an emptyDir. metrics-server got a pod-level security context (KSV-0118), and the scan skips the git-ignored rendered manifests.
 - The rollback probe first reported half its requests failed. Windows' curl, with Git Bash's path conversion off, could not open `/dev/null` and failed after each successful request. It now writes to a real file.
 - A cold catalog-service needed about four times the CPU per request of a warm one, so the autoscaler scaled to its maximum on warm-up cost. Recorded in the HPA report.
 

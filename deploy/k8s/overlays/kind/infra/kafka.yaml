@@ -84,14 +84,27 @@ spec:
             failureThreshold: 6
           securityContext:
             allowPrivilegeEscalation: false
-            # The image writes the broker's configuration from these variables when it starts,
-            # into its own config directory, so its root filesystem stays writable.
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
           volumeMounts:
             - name: data
               mountPath: /var/lib/kafka/data
+            # The image's start writes the broker's configuration here, from these variables and
+            # the defaults it keeps in /etc/kafka/docker; the root filesystem stays read-only.
+            - name: config
+              mountPath: /opt/kafka/config
+            - name: logs
+              mountPath: /opt/kafka/logs
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: logs
+          emptyDir: { sizeLimit: 256Mi }
+        - name: tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
