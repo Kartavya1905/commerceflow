@@ -143,7 +143,13 @@ wait_for_stack() {
     done < <(compose "${profiles[@]}" ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}')
 
     [[ ${#pending[@]} -eq 0 ]] && return 0
-    ((SECONDS < deadline)) || die "timed out waiting for: ${pending[*]}"
+    if ((SECONDS >= deadline)); then
+      # What each one was doing when time ran out, so the failure explains itself (in CI too).
+      for service in "${pending[@]}"; do
+        compose "${profiles[@]}" logs --no-color --tail 40 "${service%%(*}" >&2 || true
+      done
+      die "timed out waiting for: ${pending[*]}"
+    fi
     sleep 3
   done
 }

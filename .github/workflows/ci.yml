@@ -100,7 +100,9 @@ jobs:
         run: docker compose -f deploy/compose/docker-compose.yml --env-file .env.example --profile obs --profile apps config -q
 
       - name: Start infrastructure, observability and services
-        run: bash scripts/dev-up.sh --obs --apps
+        run: |
+          set -o pipefail
+          bash scripts/dev-up.sh --obs --apps 2>&1 | tee "$RUNNER_TEMP/dev-up.log"
 
       - name: Check infrastructure
         run: bash scripts/check-infra.sh
@@ -123,6 +125,11 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+      # Annotations are readable on the run page and through the API without opening the log.
+      - name: Unhealthy containers as annotations
+        if: failure()
+        run: bash scripts/ci-report-unhealthy.sh "$RUNNER_TEMP/dev-up.log"
 
       - name: Container logs on failure
         if: failure()
