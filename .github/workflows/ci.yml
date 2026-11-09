@@ -197,3 +197,53 @@ jobs:
       - name: Tear down
         if: always()
         run: bash scripts/kind-down.sh
+
+  # The Terraform, without an AWS account: fmt, validate, tests against mocked providers, tflint,
+  # checkov and the M11 gate (scripts/check-terraform.sh). Nothing is created; nothing costs money.
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: shell-lint
+    steps:
+      - uses: actions/checkout@v7
+      - name: Terraform checks
+        env:
+          # tflint's plugin download, clear of GitHub's anonymous rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/check-terraform.sh
+
+  # The AWS demo's deploy path, without AWS: k3s (the release the instance installs) in Docker,
+  # the images under their GHCR names, then the instance's own scripts/k3s-up.sh, and the smoke test.
+  k3s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: shell-lint
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Deploy to k3s through the demo's path
+        run: |
+          set -o pipefail
+          bash scripts/k3s-test.sh 2>&1 | tee "$RUNNER_TEMP/k3s-test.log"
+
+      - name: Web app smoke test against k3s
+        run: E2E_BASE_URL=http://localhost:28000 bash scripts/e2e.sh
+
+      - name: Cluster state on failure
+        if: failure()
+        env:
+          KUBECONFIG: deploy/k8s/.generated/k3s-kubeconfig
+        run: |
+          tail -n 30 "$RUNNER_TEMP/k3s-test.log" || true
+          kubectl -n commerceflow get pods -o wide || true
+          kubectl -n commerceflow get events --sort-by=.lastTimestamp | tail -40 || true
+
+      - name: Tear down
+        if: always()
+        run: bash scripts/k3s-test.sh --down

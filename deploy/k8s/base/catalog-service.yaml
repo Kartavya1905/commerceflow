@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: catalog-service
-          image: commerceflow/catalog-service:set-by-kind-up
+          image: commerceflow/catalog-service:set-at-deploy
           ports:
             - name: http
               containerPort: 8082

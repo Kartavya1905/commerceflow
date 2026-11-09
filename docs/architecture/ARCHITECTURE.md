@@ -855,8 +855,8 @@ commerceflow/
 │   ├── k8s/base, k8s/overlays/{kind,aws-demo}   Kustomize (M10)
 │   └── grafana/dashboards/       provisioned dashboards (M9)
 ├── infra/terraform/
-│   ├── modules/                  network, ec2-k3s, iam (M11)
-│   └── envs/{demo-ec2,reference-eks}
+│   ├── modules/                  network, ec2-k3s, github-oidc, each with terraform tests (M11)
+│   └── envs/{bootstrap,demo-ec2,reference-eks}
 ├── scripts/                      dev-up, dev-down, chaos helpers, DLT replay
 ├── docs/
 │   ├── architecture/ARCHITECTURE.md   this file

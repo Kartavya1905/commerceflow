@@ -1,0 +1,12 @@
+# The applications on the AWS demo instance: k3s on one EC2 instance (infra/terraform/envs/demo-ec2,
+# ADR-0016). The data stores are in infra/, applied first by scripts/k3s-up.sh, which also points
+# every image at the registry and the commit's tag (never "latest").
+#
+# The web app and the gateway are NodePorts on the instance's own address; its security group
+# admits the operator's address only, on these two ports.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - path: nodeports.yaml

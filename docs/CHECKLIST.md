@@ -218,9 +218,46 @@ Found during this milestone:
 - The rollback probe first reported half its requests failed. Windows' curl, with Git Bash's path conversion off, could not open `/dev/null` and failed after each successful request. It now writes to a real file.
 - A cold catalog-service needed about four times the CPU per request of a warm one, so the autoscaler scaled to its maximum on warm-up cost. Recorded in the HPA report.
 
-## Milestones 11–12
+## Milestone 11 — Terraform and optional AWS deployment
 
-Tracked here as each one starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
+- [x] Terraform (`infra/terraform`). Three modules: `network`, `ec2-k3s` and `github-oidc`. Three stacks:
+  - `bootstrap`: the state bucket and the GitHub roles, applied once by the account owner from CloudShell;
+  - `demo-ec2`: one EC2 instance with k3s, in its own VPC;
+  - `reference-eks`: EKS, RDS, MSK and ElastiCache, validate-only.
+
+  Terraform 1.16.6, AWS provider 6.68.0 with committed lock files, and community modules pinned to the commit of their release (ADR-0016)
+- [x] Gate, open security group: ingress from `admin_cidr` only, on the two NodePorts. The variable refuses anything wider than a /24. No SSH (no key pair, no port 22); Session Manager instead. IMDSv2 only, with a hop limit of 1
+- [x] Gate, IAM `*`: GitHub signs in with OIDC, so there are no keys. The deploy role trusts only the `aws-demo` Environment, which has a required reviewer. Every action is named. EC2 rights are limited by the Project tag and the region, IAM rights to the demo's own names, and the only policy it can attach is Session Manager's. The watcher role only describes. Written from the calls Terraform makes; not exercised against AWS (nothing is applied)
+- [x] Gate, state with secrets: the instance generates its passwords and key at first boot, and they never leave it, so none are in the configuration, the user data or the state. State is in an encrypted, versioned, private, TLS-only bucket with S3 locking. The checks fail on any tracked state file
+- [x] Gate, forgetting to destroy: the instance terminates itself `max_hours` after boot. Its first boot step schedules the shutdown, and shutting down terminates it. A scheduled workflow fails while anything is running, and GitHub emails the owner. The runbook ends with a console check
+- [x] Gate, resources outside Terraform: every stack tags all it creates with `Project = commerceflow`. The deploy role cannot touch untagged resources, and the watcher finds anything by that tag
+- [x] `scripts/check-terraform.sh` (CI): fmt; validate of the three stacks; 16 `terraform test` runs against mocked providers; tflint with the AWS ruleset; checkov at 217 passed, 0 failed and 12 skipped, each skip with its reason on the resource; and the gate's own checks
+- [x] Mutation checks: 12 of 12 caught:
+  - by the tests: ingress open to the world, a wildcard IAM action, an unlimited policy attach, no self-termination, IMDSv1, an unencrypted disk, trust in any branch, the cost guard removed, unlimited CPU credits;
+  - by tflint: an invalid instance type;
+  - by the gate checks: a port 22 rule, an untagged stack
+- [x] The instance's deploy path without AWS (`scripts/k3s-test.sh`, CI): k3s v1.36.4 (the instance's release) in Docker, with the images under their GHCR names, and the instance's own `scripts/k3s-up.sh` with the `aws-demo` overlays. All 16 pods were ready under the restricted Pod Security level, and the smoke test passed 4/4. kind-up now deploys through the same code (`scripts/lib/k8s.sh`), and still did after the move
+- [x] `aws-demo` workflow: apply and destroy are manual, need `AWS_DEMO_ENABLED` and a reviewer, and publish the commit's images to GHCR first. The scheduled check is read-only. The operator's address is an Environment secret, because the run's log is public
+- [x] [runbooks/aws-demo.md](runbooks/aws-demo.md) with the cost per hour from AWS's own price list (t3.xlarge $0.1664/h, gp3 $0.08/GB-month, public IPv4 $0.005/h: about $0.18/h running, $0 destroyed), the one-time setup, apply, destroy, and the console check. ADR-0016 and README
+- [x] Not applied: the project's budget is zero. Validating in CI is the acceptance; an apply stays optional and manual
+- [x] Final local run after the machine restarted: ShellCheck, check-k8s, check-terraform (all passed) and k3s-test with the smoke test (4/4)
+- [ ] CI green on GitHub, including the new `terraform` and `k3s` jobs
+- [ ] Tag `m11-done`
+
+Found during this milestone:
+- Managing the VPC's default security group would have needed the deploy role to change untagged resources, which would let it change any security group in the account. The group is left as AWS creates it, and nothing is placed in it.
+- The M10 Secret check passed several files to yq, which reads only the first. A Secret committed under the data stores would have passed. Each file is now checked on its own, and a Secret planted there is caught.
+- checkov's first run failed 9 checks:
+  - 7 fixed: two zone lookups replaced by named zones, two modules pinned to commits, a KMS key for RDS and ElastiCache, and Postgres query logging;
+  - ElastiCache now signs in with IAM through a user group, so there is no static token; the auth-token check is skipped with that reason;
+  - the S3 encryption skip had been placed on the wrong resource.
+
+  The second run found TLS not forced on RDS (fixed), and three false positives on the KMS key policy, skipped with that reason.
+- A mocked `terraform test` cannot see attributes AWS computes (an unset `key_name`), so "no SSH" is checked by the absence of any port 22 rule instead.
+
+## Milestone 12
+
+Tracked here as it starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
 
 ## Known limitations (kept honest)
 

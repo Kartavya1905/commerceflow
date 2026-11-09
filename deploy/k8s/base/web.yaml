@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: commerceflow/web:set-by-kind-up
+          image: commerceflow/web:set-at-deploy
           ports:
             - name: http
               containerPort: 8080

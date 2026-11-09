@@ -41,3 +41,6 @@ load-tests/k6/results/
 # Kubernetes: rendered manifests (check-k8s.sh) and per-build image tags (kind-up.sh)
 deploy/k8s/.rendered/
 deploy/k8s/.generated/
+
+# Terraform: lock files are committed for the stacks (envs/), not for modules tested alone
+infra/terraform/modules/**/.terraform.lock.hcl

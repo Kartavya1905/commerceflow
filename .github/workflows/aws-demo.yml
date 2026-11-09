@@ -1,0 +1,140 @@
+# The optional AWS demo (ROADMAP M11, runbooks/aws-demo.md). It never runs on its own:
+# - apply and destroy run only when started by hand, only when the repository variable
+#   AWS_DEMO_ENABLED is "true" (it is not set), and only after a reviewer approves the aws-demo
+#   Environment's deployment;
+# - the scheduled check only reads, and fails, so GitHub emails the owner, while any demo
+#   resource is still running.
+# GitHub signs in to AWS with OIDC (modules/github-oidc): there are no AWS keys anywhere.
+name: aws-demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: apply (publish images, then create the demo) or destroy
+        type: choice
+        options: [apply, destroy]
+        required: true
+      max_hours:
+        description: Hours after which the instance terminates itself, destroy or not
+        type: number
+        default: 4
+  schedule:
+    - cron: '17 */2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aws-demo
+  cancel-in-progress: false
+
+env:
+  TF_IMAGE: hashicorp/terraform:1.16.6
+  REGISTRY: ghcr.io/kartavya1905/commerceflow
+
+jobs:
+  # The images the instance pulls, tagged with the commit's first 12 characters (as kind-up tags
+  # them). GHCR is free for public packages; each package must be made public once (runbook).
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply' && vars.AWS_DEMO_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build and push
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/common.sh
+          source scripts/lib/k8s.sh
+          tag="${GITHUB_SHA:0:12}"
+          build_jars
+          compose --profile apps build --quiet
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for image in "${APP_IMAGES[@]}" kafka-init; do
+            docker tag "commerceflow/$image:local" "$REGISTRY/$image:$tag"
+            docker push --quiet "$REGISTRY/$image:$tag"
+          done
+
+  terraform:
+    if: github.event_name == 'workflow_dispatch' && vars.AWS_DEMO_ENABLED == 'true' && !failure() && !cancelled()
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Required reviewer: nothing is created or destroyed until someone approves this run.
+    environment: aws-demo
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sign in to AWS (OIDC, one hour)
+        uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: terraform ${{ inputs.action }}
+        env:
+          # Your address, as an Environment secret: the run's log is public, and GitHub masks secrets.
+          TF_VAR_admin_cidr: ${{ secrets.AWS_ADMIN_CIDR }}
+          TF_VAR_git_commit: ${{ github.sha }}
+          TF_VAR_max_hours: ${{ inputs.max_hours }}
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+          STATE_BUCKET: ${{ vars.AWS_STATE_BUCKET }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          tf() {
+            docker run --rm -v "$PWD:/repo" -w /repo/infra/terraform/envs/demo-ec2 \
+              -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN -e AWS_REGION \
+              -e TF_VAR_admin_cidr -e TF_VAR_git_commit -e TF_VAR_max_hours -e TF_VAR_region \
+              -e TF_IN_AUTOMATION=1 "$TF_IMAGE" "$@"
+          }
+          tf init -input=false -lockfile=readonly \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$AWS_REGION"
+          if [[ "$ACTION" == apply ]]; then
+            tf apply -input=false -auto-approve
+            tf output
+          else
+            tf destroy -input=false -auto-approve
+          fi
+
+  # Forgetting to destroy: every two hours, list anything of the project's still running in AWS.
+  # A failure here emails the repository's owner. Read-only (the watcher role).
+  watch:
+    if: github.event_name == 'schedule' && vars.AWS_DEMO_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Sign in to AWS (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_WATCHER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Anything still running?
+        run: |
+          set -euo pipefail
+          running=$(aws ec2 describe-instances \
+            --filters Name=tag:Project,Values=commerceflow Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[].Instances[].[InstanceId,LaunchTime]' --output text)
+          if [[ -n "$running" ]]; then
+            echo "::error title=The AWS demo is still running::$running - run the aws-demo workflow with action destroy (runbooks/aws-demo.md)"
+            exit 1
+          fi
+          echo "Nothing of CommerceFlow is running in AWS."

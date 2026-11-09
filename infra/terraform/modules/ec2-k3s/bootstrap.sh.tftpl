@@ -1,0 +1,42 @@
+#!/bin/bash
+# CommerceFlow demo instance, first boot: cloud-init runs this user data, rendered by Terraform.
+# (Terraform fills in the dollar-brace values below; the shell's own variables are written $NAME.)
+#
+# 1. The safety net, before anything that could fail: the instance terminates itself after
+#    ${max_hours} h (shutdown, with instance-initiated shutdown set to terminate).
+# 2. k3s ${k3s_version}. Its installer, taken from that release's tag, checks the binary against
+#    the release's published checksums.
+# 3. The repository at commit ${git_commit}, exactly.
+# 4. scripts/k3s-up.sh: the secrets are generated here and never leave the instance; images
+#    ${image_registry}/<service>:${image_tag}.
+#
+# Progress is in /var/log/commerceflow-bootstrap.log (Session Manager: sudo tail -f it).
+set -euo pipefail
+exec > >(tee -a /var/log/commerceflow-bootstrap.log) 2>&1
+
+echo "==> Self-termination in ${max_hours} h"
+shutdown -h "+$((${max_hours} * 60))"
+
+echo "==> Packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q git curl openssl
+
+echo "==> k3s ${k3s_version}"
+curl -fsSL -o /tmp/k3s-install.sh \
+  "https://raw.githubusercontent.com/k3s-io/k3s/${replace(k3s_version, "+", "%2B")}/install.sh"
+# No bundled ingress or load balancer: the demo uses NodePorts. metrics-server stays (the HPA).
+INSTALL_K3S_VERSION="${k3s_version}" \
+  INSTALL_K3S_EXEC="--disable=traefik --disable=servicelb --write-kubeconfig-mode=0600" \
+  sh /tmp/k3s-install.sh
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+until kubectl get --raw /readyz > /dev/null 2>&1; do sleep 2; done
+
+echo "==> CommerceFlow at ${git_commit}"
+git init -q /opt/commerceflow
+cd /opt/commerceflow
+git fetch -q --depth 1 "${git_repository}" "${git_commit}"
+git checkout -q FETCH_HEAD
+
+IMAGE_REGISTRY="${image_registry}" IMAGE_TAG="${image_tag}" bash scripts/k3s-up.sh
+echo "==> Done. The admin's password: sudo grep BOOTSTRAP_ADMIN /opt/commerceflow/.env"

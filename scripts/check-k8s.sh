@@ -3,12 +3,13 @@
 #
 #   scripts/check-k8s.sh
 #
-# 1. Renders every kustomization (base, the kind overlay and its data stores, metrics-server).
-# 2. kubeconform: each object against the Kubernetes API schema of the version kind runs, strictly
-#    (an unknown or misspelt field fails).
+# 1. Renders every kustomization: base, the kind and AWS demo overlays with their data stores, and
+#    metrics-server.
+# 2. kubeconform: each object against the Kubernetes API schema of the version kind and k3s run,
+#    strictly (an unknown or misspelt field fails).
 # 3. Policy, the review gate's defects as checks:
 #    - every image has a tag, and none is "latest";
-#    - no Secret object (they are created from .env by kind-up, never committed);
+#    - no Secret object (the deploy creates them from .env, scripts/lib/k8s.sh; never committed);
 #    - every container has a memory limit equal to its request, and a CPU request;
 #    - every long-running container has liveness and readiness probes, and no Spring Boot
 #      service's readiness group includes Kafka;
@@ -30,7 +31,8 @@ command -v kubectl > /dev/null || die "kubectl is needed (Docker Desktop include
 
 out="$ROOT/deploy/k8s/.rendered"
 rm -rf "$out" && mkdir -p "$out"
-for target in base overlays/kind overlays/kind/infra addons/metrics-server; do
+for target in base overlays/kind overlays/kind/infra overlays/aws-demo overlays/aws-demo/infra \
+  addons/metrics-server; do
   kubectl kustomize "$ROOT/deploy/k8s/$target" > "$out/${target//\//-}.yaml" ||
     die "kustomize could not render deploy/k8s/$target"
 done
@@ -60,8 +62,10 @@ ROW='select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "Job")
      ((.securityContext.capabilities.drop // []) | contains(["ALL"]) | tostring),
      (parent(2).enableServiceLinks | tostring),
      (parent(2).automountServiceAccountToken | tostring)] | @tsv'
+# Every deployable kustomization, one at a time: yq given several files reads only the first.
+DEPLOYED=(overlays-kind.yaml overlays-kind-infra.yaml overlays-aws-demo.yaml overlays-aws-demo-infra.yaml)
 rows=""
-for file in overlays-kind.yaml overlays-kind-infra.yaml; do
+for file in "${DEPLOYED[@]}"; do
   rows+="$(yq "$ROW" "/manifests/$file")"$'\n'
 done
 rows="$(grep -v '^$' <<< "$rows")"
@@ -91,10 +95,12 @@ check "no container can escalate privileges or keeps a capability" '$12 != "fals
 check "no pod gets service-link variables or a service account token" \
   '$14 != "false" || $15 != "false"'
 
-secrets=$(yq 'select(.kind == "Secret") | "Secret/" + .metadata.name' /manifests/overlays-kind.yaml \
-  /manifests/overlays-kind-infra.yaml)
+secrets=""
+for file in "${DEPLOYED[@]}"; do
+  secrets+="$(yq 'select(.kind == "Secret") | "Secret/" + .metadata.name + " "' "/manifests/$file")"
+done
 if [[ -n "$secrets" ]]; then
-  echo "FAIL no Secret objects in Git (kind-up creates them from .env): $secrets"
+  echo "FAIL no Secret objects in Git (the deploy creates them from .env): $secrets"
   failures=$((failures + 1))
 else
   echo "ok   no Secret objects in Git"

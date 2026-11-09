@@ -1,0 +1,7 @@
+# The demo instance's data stores: the same single-node Postgres, Kafka and Redis, and the same setup
+# Jobs, as kind. k3s's default local-path storage holds their volumes on the instance's encrypted
+# root disk, which is deleted with the instance.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../kind/infra
