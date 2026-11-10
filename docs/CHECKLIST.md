@@ -241,8 +241,8 @@ Found during this milestone:
 - [x] [runbooks/aws-demo.md](runbooks/aws-demo.md) with the cost per hour from AWS's own price list (t3.xlarge $0.1664/h, gp3 $0.08/GB-month, public IPv4 $0.005/h: about $0.18/h running, $0 destroyed), the one-time setup, apply, destroy, and the console check. ADR-0016 and README
 - [x] Not applied: the project's budget is zero. Validating in CI is the acceptance; an apply stays optional and manual
 - [x] Final local run after the machine restarted: ShellCheck, check-k8s, check-terraform (all passed) and k3s-test with the smoke test (4/4)
-- [ ] CI green on GitHub, including the new `terraform` and `k3s` jobs
-- [ ] Tag `m11-done`
+- [x] CI green on GitHub, including the new `terraform` and `k3s` jobs: ci run 42747943807 and security run 42747943876 on 940d0b0, both first attempt. The first push, 21a1d3b, passed every job but the Trivy scans (below)
+- [x] Tag `m11-done` (on 940d0b0)
 
 Found during this milestone:
 - Managing the VPC's default security group would have needed the deploy role to change untagged resources, which would let it change any security group in the account. The group is left as AWS creates it, and nothing is placed in it.
@@ -254,6 +254,7 @@ Found during this milestone:
 
   The second run found TLS not forced on RDS (fixed), and three false positives on the KMS key policy, skipped with that reason.
 - A mocked `terraform test` cannot see attributes AWS computes (an unset `key_name`), so "no SSH" is checked by the absence of any port 22 rule instead.
+- The first push failed both Trivy scans. The images' Ubuntu base had a fixed HIGH vulnerability in apt (CVE-2026-109518); the service image now upgrades its packages at build time. The filesystem scan now reads Terraform: the instance's egress on 443 and 80, the state bucket's S3-managed encryption and the EKS module's node egress are accepted on purpose, each ignored inline with its reason, and downloaded modules are skipped.
 
 ## Milestone 12
 
