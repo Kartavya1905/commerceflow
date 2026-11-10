@@ -272,8 +272,8 @@ Found during this milestone:
   - the README rewritten, with every number linking to the report that measured it;
   - [SETUP.md](SETUP.md), [DEMO.md](DEMO.md), [DEPLOYMENT.md](DEPLOYMENT.md) (upgrade and rollback), and the [API reference](api/README.md);
   - [RESUME.md](RESUME.md): resume bullets and interview questions, each linked to its evidence
-- [ ] CI green on GitHub
-- [ ] Release tag `v1.0.0` and `m12-done`
+- [x] CI green on GitHub: ci run 42842041606 and security run 42842042201 on f4a9cba, both first attempt, all 11 jobs
+- [x] Release tag `v1.0.0` and `m12-done` (on f4a9cba)
 
 Found during this milestone:
 - The JVM chose the Serial garbage collector in every service. Below 1,792 MB it does so by itself, and every container is 768 MB. Nobody had picked it, and it was the gateway's tail latency. G1 is now set explicitly in the image recipe, with the reason.
