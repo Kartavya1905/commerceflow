@@ -46,6 +46,8 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+# S3-managed keys encrypt the state; a customer-managed KMS key would cost $1 a month.
+#trivy:ignore:AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
   rule {

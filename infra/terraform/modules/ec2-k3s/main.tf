@@ -70,6 +70,9 @@ resource "aws_vpc_security_group_ingress_rule" "api" {
 
 # Out: HTTPS for k3s, the repository, the image registry and Session Manager, and HTTP for Ubuntu's
 # package mirrors. DNS and time go to the VPC's own resolver, which security groups do not filter.
+# Any destination, on these two ports only: GitHub, GHCR, Ubuntu's mirrors and SSM publish no
+# fixed address ranges, and VPC endpoints for SSM would be billed by the hour.
+#trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.instance.id
   description       = "HTTPS: k3s, GitHub, GHCR and SSM"
@@ -79,6 +82,7 @@ resource "aws_vpc_security_group_egress_rule" "https" {
   to_port           = 443
 }
 
+#trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "http" {
   security_group_id = aws_security_group.instance.id
   description       = "HTTP: Ubuntu package mirrors"

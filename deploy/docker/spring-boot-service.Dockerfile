@@ -12,6 +12,11 @@ COPY services/${SERVICE}/target/${SERVICE}-*.jar app.jar
 RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination extracted
 
 FROM eclipse-temurin:21.0.13_9-jre-noble
+# The base image's Ubuntu packages, brought up to their patched versions at build time (Trivy: apt
+# had a fixed HIGH vulnerability, CVE-2026-109518, in the published image).
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 # A dedicated unprivileged user; the process never runs as root.
 RUN groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app

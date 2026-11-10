@@ -40,14 +40,18 @@ filesystem() {
   # rate-limits a scan like that (HTTP 429) and adds nothing the image scan does not already cover.
   # secrets/ and .env are git-ignored and exist only on a developer's machine, by design; gitleaks
   # checks that no secret was ever committed. deploy/k8s/.rendered and .generated are git-ignored
-  # build output (check-k8s.sh, kind-up.sh); the manifests they come from are scanned.
+  # build output (check-k8s.sh, kind-up.sh); the manifests they come from are scanned. .terraform
+  # holds downloaded modules with their authors' examples; our Terraform is scanned.
+  # A misconfiguration accepted on purpose is ignored inline (#trivy:ignore), with its reason next
+  # to the resource.
   trivy "$TRIVY_IMAGE" fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL \
     --skip-version-check --skip-files '**/pom.xml' \
     --ignore-unfixed --ignorefile /repo/.trivyignore --timeout 20m --skip-dirs /repo/.git \
     --skip-dirs /repo/frontend/node_modules --skip-dirs /repo/frontend/dist \
     --skip-dirs /repo/secrets --skip-files /repo/.env \
     --skip-dirs '/repo/**/target' --skip-dirs /repo/deploy/k8s/.rendered \
-    --skip-dirs /repo/deploy/k8s/.generated --exit-code 1 --no-progress /repo || failed=1
+    --skip-dirs /repo/deploy/k8s/.generated --skip-dirs '/repo/**/.terraform' \
+    --exit-code 1 --no-progress /repo || failed=1
 }
 
 images() {

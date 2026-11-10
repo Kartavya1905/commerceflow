@@ -58,6 +58,9 @@ module "vpc" {
   private_subnet_tags = { "kubernetes.io/role/internal-elb" = 1 }
 }
 
+# The module lets the nodes reach any address (its egress_all rule): they pull images and reach the
+# control plane and AWS APIs through the NAT gateway. A reference stack, never applied.
+#trivy:ignore:AWS-0104
 module "eks" {
   source = "git::https://github.com/terraform-aws-modules/terraform-aws-eks.git?ref=323c633629b8e4306d94eb1392d7400a80143621"
 
