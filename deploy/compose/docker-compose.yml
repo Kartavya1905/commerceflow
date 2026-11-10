@@ -12,6 +12,8 @@ name: commerceflow
 # Tracing (NFR-08): spans go to the collector only when dev-up runs with --obs, which starts it.
 x-tracing: &tracing
   TRACING_EXPORT: ${TRACING_EXPORT:-false}
+  # The share of requests traced: all of them by default (docs/reports/performance.md shows the cost).
+  TRACING_SAMPLING: ${TRACING_SAMPLING:-1.0}
   OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
 
 x-restart: &restart
@@ -366,6 +368,13 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
       # The web app's nginx is the one proxy whose X-Forwarded-For the rate limits believe.
       GATEWAY_TRUSTED_PROXIES: web
+      # Per-client limits (requests per second, and burst). The defaults hold everywhere except a
+      # performance run (scripts/perf.sh): all of its virtual users come from one address, which
+      # would otherwise share a single bucket.
+      GATEWAY_RATE: ${GATEWAY_RATE:-50}
+      GATEWAY_BURST: ${GATEWAY_BURST:-100}
+      GATEWAY_AUTH_RATE: ${GATEWAY_AUTH_RATE:-5}
+      GATEWAY_AUTH_BURST: ${GATEWAY_AUTH_BURST:-10}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     # Only the public port. The management port (8090) stays inside the network for Prometheus.
     ports:

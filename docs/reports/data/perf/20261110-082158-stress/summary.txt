@@ -1,0 +1,18 @@
+
+profile stress, measured window 60-810 s
+  list (measure)             p50 1544.6 ms  p95 5226.1 ms  p99 9518.7 ms  n=94024
+  product (measure)          p50 1446.8 ms  p95 5073.8 ms  p99 8253.6 ms  n=94034
+  order (measure)            p50 1435.3 ms  p95 5276.9 ms  p99 9973.9 ms  n=94023
+  errors (measure)           1.250 %
+  all at 500 users           p50 470.6 ms  p95 1971.4 ms  p99 13498.3 ms  n=38966
+  errors at 500 users        1.083 %
+  all at 750 users           p50 826.8 ms  p95 2327.6 ms  p99 3456.4 ms  n=66936
+  errors at 750 users        0.028 %
+  all at 1000 users          p50 1805.2 ms  p95 4410.0 ms  p99 5993.1 ms  n=47307
+  errors at 1000 users       0.258 %
+  all at 1500 users          p50 2903.9 ms  p95 7812.0 ms  p99 25719.2 ms  n=40029
+  errors at 1500 users       1.277 %
+  all at 2000 users          p50 3051.3 ms  p95 13895.2 ms  p99 59989.8 ms  n=39423
+  errors at 2000 users       2.996 %
+  requests                   294168 (358.8/s over the whole run)
+  thresholds: http_req_duration{step:2000} FAILED; http_req_duration{step:1000,name:product} FAILED; http_req_failed{step:2000} FAILED; http_req_duration{step:500,name:product} FAILED; http_req_duration{step:750} FAILED; http_req_duration{step:1000} FAILED; http_req_duration{phase:measure,name:list} FAILED; http_req_duration{step:2000,name:order} FAILED; http_req_duration{step:500,name:order} FAILED; http_req_duration{step:1500,name:list} FAILED; http_req_duration{step:1000,name:order} FAILED; http_req_duration{step:750,name:list} FAILED; http_req_failed{step:750} ok; http_req_failed{step:500} FAILED; http_req_duration{step:1000,name:list} FAILED; http_req_failed{phase:measure} FAILED; http_req_duration{step:750,name:product} FAILED; http_req_failed{phase:warmup} ok; http_req_duration{phase:measure,name:product} FAILED; http_req_duration{step:500,name:list} FAILED; http_req_duration{step:750,name:order} FAILED; http_req_duration{step:2000,name:product} FAILED; http_req_duration{step:1500,name:product} FAILED; http_req_duration{step:2000,name:list} FAILED; http_req_duration{step:500} FAILED; http_req_failed{step:1000} ok; http_req_failed{step:1500} FAILED; http_req_duration{step:1500} FAILED; http_req_duration{step:1500,name:order} FAILED; http_req_duration{phase:warmup} ok; http_req_duration{phase:measure,name:order} FAILED

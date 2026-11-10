@@ -28,5 +28,8 @@ COPY --from=extract /build/extracted/application/ ./
 USER 10001:10001
 # Size the heap from the container's memory limit, and die cleanly on OOM so the orchestrator
 # restarts the container instead of leaving a half-alive JVM.
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+# G1, chosen explicitly (ADR-0017): below 1,792 MB of memory the JVM picks the Serial collector,
+# which stops the whole service for every collection. At 500 users the gateway spent 21 % of its
+# time in those pauses, and they were the p95 (docs/reports/performance.md).
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]

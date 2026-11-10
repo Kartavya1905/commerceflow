@@ -1,0 +1,8 @@
+
+profile smoke, measured window 15-75 s
+  list (measure)             p50 10.7 ms  p95 34.7 ms  p99 94.4 ms  n=287
+  product (measure)          p50 9.3 ms  p95 23.3 ms  p99 55.5 ms  n=287
+  order (measure)            p50 12.4 ms  p95 34.3 ms  p99 90.2 ms  n=287
+  errors (measure)           0.000 %
+  requests                   950 (12.5/s over the whole run)
+  thresholds: http_req_failed{phase:measure} ok; http_req_duration{phase:measure,name:order} ok; http_req_duration{phase:warmup} ok; http_req_failed{phase:warmup} ok; http_req_duration{phase:measure,name:list} ok; http_req_duration{phase:measure,name:product} ok

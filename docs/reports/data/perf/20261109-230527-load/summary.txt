@@ -1,0 +1,8 @@
+
+profile load, measured window 120-420 s
+  list (measure)             p50 41.5 ms  p95 269.9 ms  p99 518.8 ms  n=121747
+  product (measure)          p50 37.8 ms  p95 248.3 ms  p99 482.4 ms  n=121881
+  order (measure)            p50 39.5 ms  p95 240.1 ms  p99 455.8 ms  n=121979
+  errors (measure)           0.000 %
+  requests                   463133 (1026.9/s over the whole run)
+  thresholds: http_req_duration{phase:warmup} ok; http_req_duration{phase:measure,name:product} ok; http_req_failed{phase:measure} ok; http_req_failed{phase:warmup} ok; http_req_duration{phase:measure,name:order} ok; http_req_duration{phase:measure,name:list} ok

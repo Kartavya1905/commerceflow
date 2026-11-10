@@ -1,0 +1,8 @@
+
+profile soak, measured window 120-1920 s
+  list (measure)             p50 11.9 ms  p95 109.2 ms  p99 229.1 ms  n=415887
+  product (measure)          p50 10.7 ms  p95 96.9 ms  p99 204.4 ms  n=415896
+  order (measure)            p50 12.9 ms  p95 96.0 ms  p99 200.1 ms  n=415905
+  errors (measure)           0.000 %
+  requests                   1299681 (666.2/s over the whole run)
+  thresholds: http_req_failed{phase:measure} ok; http_req_failed{phase:warmup} ok; http_req_duration{phase:measure,name:order} ok; http_req_duration{phase:warmup} ok; http_req_duration{phase:measure,name:list} ok; http_req_duration{phase:measure,name:product} ok

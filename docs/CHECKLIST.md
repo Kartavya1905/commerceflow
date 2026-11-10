@@ -256,9 +256,31 @@ Found during this milestone:
 - A mocked `terraform test` cannot see attributes AWS computes (an unset `key_name`), so "no SSH" is checked by the absence of any port 22 rule instead.
 - The first push failed both Trivy scans. The images' Ubuntu base had a fixed HIGH vulnerability in apt (CVE-2026-109518); the service image now upgrades its packages at build time. The filesystem scan now reads Terraform: the instance's egress on 443 and 80, the state bucket's S3-managed encryption and the EKS module's node egress are accepted on purpose, each ignored inline with its reason, and downloaded modules are skipped.
 
-## Milestone 12
+## Milestone 12 — Performance validation, documentation, release
 
-Tracked here as it starts. See [ROADMAP.md](ROADMAP.md) for scope and gates.
+- [x] k6 workloads (`load-tests/k6/perf-reads.js`): smoke, load (500 users), stress (500 → 2,000 users, in steps) and soak (30 minutes at 250). They run against a data set built through the API (`perf-seed.js`: 2,065 products, 100 customers, 500 confirmed orders). `scripts/perf.sh` records the hardware, versions, commit, JVM options, data set and other containers, samples `docker stats` every 10 s, and keeps the raw summary in `docs/reports/data/perf/`
+- [x] Gate, k6 on the same machine: noted in the report, capped at 2 CPUs, and its own use recorded in every run (0.45–0.59 CPU on average)
+- [x] Gate, cold JVM: every request is tagged warm-up, measure or ramp-down, and only the measured window counts. The gateway, recreated for each run, is warmed with 300 reads first
+- [x] Gate, averages: p50/p95/p99 per endpoint and error rate only. No average latency appears anywhere
+- [x] Gate, tuning until it passes: every run is reported as it happened. That includes the Serial-GC baseline, the 10 % sampling run that did not help, the repeat that showed 20–30 % variation, the stress run that broke, and the two harness runs that measured nothing
+- [x] NFR-05, p95 < 300 ms at 500 users: met in 5 of 5 load runs (p95 188–284 ms), with 0 errors in 1,863,191 measured requests ([performance report](reports/performance.md))
+- [x] Top bottleneck found and fixed, then re-measured. The JVM had picked the Serial collector in 768 MB containers, and the gateway was paused 21 % of the time. It now runs `-XX:+UseG1GC`: 2.8 % paused, the longest pause in any service down from 2.87 s to 0.16 s, and p99 down in every run. The median rose (reported)
+- [x] Stress: throughput peaks at 750 users (557 reads/s); errors pass 1 % at 1,500 and reach 3 % at 2,000. Under its fast ramp-up the system was already overloaded at 500 users, because of the sign-in surge; a control run straight afterwards held 500 users within the target
+- [x] Soak: 30 minutes at 250 users, p95 96–109 ms, p99 200–229 ms, 0 errors in 1,247,688 requests. No heap growth (old generation 57–61 MiB); the gateway's native memory rose by 137 MiB (open question, in the report)
+- [x] ADR-0017: how performance is measured, and G1 for every service
+- [x] Documentation for a first-time reader:
+  - the README rewritten, with every number linking to the report that measured it;
+  - [SETUP.md](SETUP.md), [DEMO.md](DEMO.md), [DEPLOYMENT.md](DEPLOYMENT.md) (upgrade and rollback), and the [API reference](api/README.md);
+  - [RESUME.md](RESUME.md): resume bullets and interview questions, each linked to its evidence
+- [ ] CI green on GitHub
+- [ ] Release tag `v1.0.0` and `m12-done`
+
+Found during this milestone:
+- The JVM chose the Serial garbage collector in every service. Below 1,792 MB it does so by itself, and every container is 768 MB. Nobody had picked it, and it was the gateway's tail latency. G1 is now set explicitly in the image recipe, with the reason.
+- Tempo did not hold up. It used 1.5–4.2 CPUs, more than any service, sat at its 512 MB limit in every run, and restarted 11 times, losing traces. Tracing 10 % of requests halved its CPU but did not improve latency. Fixing it (more memory, shorter retention, lower sampling) is recorded as the first thing to change for real traffic.
+- Runs with nothing changed differed by 20–30 % at p95, and latency drifted up from run to run. A single before-and-after pair would have overstated the GC fix at p95; only the p99 improvement is larger than the noise.
+- A fast ramp-up overloads sign-in: each new user's Argon2 hash is CPU-heavy by design, and 500 of them in a minute took identity-service to 1.15 CPUs. The gateway's sign-in rate limit, raised for these runs, exists for this.
+- The first seed stopped at a 15-character Idempotency-Key (the contract asks for 16 to 64). The first smoke run measured nothing: a just-recreated gateway took up to 94 s for its first requests. Both are fixed in the harness, and their data is kept.
 
 ## Known limitations (kept honest)
 

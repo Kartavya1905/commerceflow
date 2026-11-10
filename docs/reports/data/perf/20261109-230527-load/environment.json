@@ -1,0 +1,14 @@
+{
+  "started": "2026-11-10T04:06:05Z",
+  "profile": "load",
+  "commit": "7aa5e2e0829a-dirty",
+  "cpu": "AMD Ryzen 9 9955HX 16-Core Processor",
+  "docker": "29.9.2, 10 CPUs, 16386342912 bytes",
+  "k6": "grafana/k6:2.3.0, capped at 2 CPUs, on the same machine and Docker as the system",
+  "products": 2065,
+  "customers": 100,
+  "seeded_orders": 500,
+  "tracing": "export true, sampling 1.0 of requests",
+  "other_containers": 26,
+  "gateway_rate_limits": "raised for the run (one client address)"
+}

@@ -56,7 +56,8 @@ management:
   # without the collector nothing retries an export endpoint that is not there.
   tracing:
     sampling:
-      probability: 1.0
+      # Every request locally (TRACING_SAMPLING overrides it, as a performance run does).
+      probability: ${TRACING_SAMPLING:1.0}
     export:
       enabled: ${TRACING_EXPORT:false}
   opentelemetry:
